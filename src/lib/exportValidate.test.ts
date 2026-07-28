@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { appendAssetPlaceholdersForValidate } from './exportValidate'
+import { validateExportPackDirectory } from './exportValidate'
 import { buildRolePackFiles } from './exportPack'
 import { DEFAULT_MANIFEST_JSON, DEFAULT_SETTINGS_JSON } from '../defaults'
 
@@ -44,5 +45,57 @@ describe('exportValidate', () => {
     expect(out.has('demo/assets/images/happy.webp')).toBe(true)
     expect(out.has('demo/assets/live2d/m.model3.json')).toBe(true)
     expect(out.has('demo/assets/live2d/stage.model3.json')).toBe(true)
+  })
+
+  it('browser fallback rejects an include whose satellite file is absent', async () => {
+    const manifest = JSON.parse(DEFAULT_MANIFEST_JSON) as Record<string, unknown>
+    const settings = JSON.parse(DEFAULT_SETTINGS_JSON) as Record<string, unknown>
+    const result = await validateExportPackDirectory('demo', manifest, settings, {
+      preservedBlueprintFields: {
+        includes: [
+          {
+            path: 'blueprint/includes/personality.json',
+            target: 'meta.personality',
+            mode: 'replace',
+          },
+        ],
+      },
+    })
+    expect(result.ok).toBe(false)
+    expect(result.errors.some((error) => error.includes('未包含在导出结果中'))).toBe(true)
+  })
+
+  it('browser fallback rejects malformed and contract-invalid merged includes', async () => {
+    const manifest = JSON.parse(DEFAULT_MANIFEST_JSON) as Record<string, unknown>
+    const settings = JSON.parse(DEFAULT_SETTINGS_JSON) as Record<string, unknown>
+    const include = {
+      path: 'blueprint/includes/backend.json',
+      target: 'slot_registry.llm.backend',
+      mode: 'replace' as const,
+    }
+
+    const malformed = await validateExportPackDirectory('demo', manifest, settings, {
+      preservedBlueprintFields: { includes: [include] },
+      preservedFiles: [
+        {
+          relPath: include.path,
+          file: new File(['{'], 'backend.json', { type: 'application/json' }),
+        },
+      ],
+    })
+    expect(malformed.ok).toBe(false)
+    expect(malformed.errors.some((error) => error.includes('JSON 解析失败'))).toBe(true)
+
+    const invalidMerged = await validateExportPackDirectory('demo', manifest, settings, {
+      preservedBlueprintFields: { includes: [include] },
+      preservedFiles: [
+        {
+          relPath: include.path,
+          file: new File(['"openai_compatible"'], 'backend.json', { type: 'application/json' }),
+        },
+      ],
+    })
+    expect(invalidMerged.ok).toBe(false)
+    expect(invalidMerged.errors.some((error) => error.includes('openai_compatible'))).toBe(true)
   })
 })

@@ -15,7 +15,7 @@
 
 ## 专家路由配置
 
-- **运行时权威**：`roles/{id}/blueprint/includes/expert_routing.json`（及蓝图 `includes[]` 指向该文件的条目）。
+- **运行时权威**：`roles/{id}/blueprint/includes/expert_routing.json`，由专家路由专用加载器读取；它不是蓝图通用 `includes[]` 的合法 target。
 - **配置入口**：**A.I.Live（oclivenewnew）** → **Ctrl+Shift+F** → 插件与后端管理 → **架构图** → **专家模型设施**（齿轮）→ 保存路由。
 - **编写器不负责**生成或校验 `expert_routing.json`（无对应编辑页）。
 - 文档：[OCLIVE_ARCHITECTURE_OVERVIEW § 专家模型设施子模块](https://github.com/linkaiheng2233-cyber/oclivenewnew/blob/main/creator-docs/getting-started/OCLIVE_ARCHITECTURE_OVERVIEW.md)、[ROLE_PACK_SPEC §2.6](https://github.com/linkaiheng2233-cyber/oclivenewnew/blob/main/creator-docs/role-pack/ROLE_PACK_SPEC.md)。

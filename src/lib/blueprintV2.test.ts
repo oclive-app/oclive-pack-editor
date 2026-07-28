@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   buildBlueprintV2FromLegacy,
   blueprintToLegacyParts,
+  minimalBlueprintJsonForRole,
   parseBlueprintV2Json,
   pluginBackendsToSlotRegistry,
   serializeBlueprintV2,
@@ -88,5 +89,46 @@ describe('validateBlueprintV2Typescript', () => {
     }
     const errs = validateBlueprintV2Typescript(bp)
     expect(errs.some((e) => e.includes('meta.id'))).toBe(true)
+  })
+
+  it('rejects fields and backends outside the public v2 contract', () => {
+    const bp = JSON.parse(minimalBlueprintJsonForRole('hero')) as ReturnType<
+      typeof buildBlueprintV2FromLegacy
+    >
+    ;(bp as unknown as Record<string, unknown>).future_root = true
+    ;(bp as unknown as Record<string, unknown>).expert_overlay = 'not-an-object'
+    ;(bp.slot_registry.llm as unknown as Record<string, unknown>).policy = 'first'
+    bp.slot_registry.llm.backend = 'openai_compatible'
+
+    const errs = validateBlueprintV2Typescript(bp, 'hero')
+    expect(errs.some((e) => e.includes('future_root'))).toBe(true)
+    expect(errs.some((e) => e.includes('expert_overlay'))).toBe(true)
+    expect(errs.some((e) => e.includes('policy'))).toBe(true)
+    expect(errs.some((e) => e.includes('openai_compatible'))).toBe(true)
+  })
+
+  it('validates include and group structures in the browser fallback', () => {
+    const bp = JSON.parse(minimalBlueprintJsonForRole('hero')) as ReturnType<
+      typeof buildBlueprintV2FromLegacy
+    >
+    bp.includes = [
+      {
+        path: '../outside.json',
+        target: 'runtime_config.expert_hints',
+        mode: 'merge',
+      },
+    ]
+    bp.groups = {
+      llms: {
+        label: 'LLMs',
+        type: 'llm',
+        members: ['missing'],
+      },
+    }
+
+    const errs = validateBlueprintV2Typescript(bp, 'hero')
+    expect(errs.some((e) => e.includes('安全相对路径'))).toBe(true)
+    expect(errs.some((e) => e.includes('target'))).toBe(true)
+    expect(errs.some((e) => e.includes('引用未知'))).toBe(true)
   })
 })

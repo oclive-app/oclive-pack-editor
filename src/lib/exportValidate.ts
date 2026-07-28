@@ -3,8 +3,51 @@ import { HOST_RUNTIME_VERSION } from './hostRuntimeVersion'
 import { isTauriRuntime } from './exportFolder'
 import { parseConfigJson } from './portraitCatalog'
 import { humanizeExportValidateErrors } from './exportErrorMessages'
+import {
+  PIPELINE_BLUEPRINT_FILENAME,
+  parseBlueprintV2Json,
+  validateBlueprintV2Typescript,
+} from './blueprintV2'
 import { invoke } from '@tauri-apps/api/core'
 const PLACEHOLDER_BYTES = '\u0000'
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function mergeJsonValues(base: unknown, patch: unknown): unknown {
+  if (!isRecord(base) || !isRecord(patch)) return patch
+  const merged: Record<string, unknown> = { ...base }
+  for (const [key, value] of Object.entries(patch)) {
+    merged[key] = mergeJsonValues(merged[key], value)
+  }
+  return merged
+}
+
+function applyIncludeAtTarget(
+  root: Record<string, unknown>,
+  target: string,
+  fragment: unknown,
+  mode: 'merge' | 'replace',
+): string | null {
+  const parts = target.split('.')
+  let cursor = root
+  for (const [index, key] of parts.entries()) {
+    const last = index === parts.length - 1
+    if (last) {
+      cursor[key] = mode === 'replace' ? fragment : mergeJsonValues(cursor[key], fragment)
+      return null
+    }
+    const next = cursor[key]
+    if (next == null) {
+      cursor[key] = {}
+    } else if (!isRecord(next)) {
+      return `target「${target}」中间节点须为对象`
+    }
+    cursor = cursor[key] as Record<string, unknown>
+  }
+  return `target「${target}」解析失败`
+}
 
 /** Mirror disk paths referenced by catalog / VP so wasm `validate_portrait_catalog_files` passes. */
 export function appendAssetPlaceholdersForValidate(
@@ -76,6 +119,49 @@ export async function validateExportPackDirectory(
     const key = `${id}/${rel}`
     if (!files.has(key)) files.set(key, await file.text())
   }
+
+  const blueprintPath = `${id}/${PIPELINE_BLUEPRINT_FILENAME}`
+  try {
+    const blueprint = parseBlueprintV2Json(files.get(blueprintPath) ?? '')
+    const structuralErrors = validateBlueprintV2Typescript(blueprint, id)
+    const resolved = JSON.parse(JSON.stringify(blueprint)) as Record<string, unknown>
+    delete resolved.includes
+    for (const [index, include] of (blueprint.includes ?? []).entries()) {
+      const includePath = `${id}/${include.path.replace(/^\/+/, '')}`
+      const includeRaw = files.get(includePath)
+      if (includeRaw == null) {
+        structuralErrors.push(`includes[${index}] 引用的文件未包含在导出结果中：${include.path}`)
+        continue
+      }
+      let fragment: unknown
+      try {
+        fragment = JSON.parse(includeRaw)
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e)
+        structuralErrors.push(`includes[${index}] JSON 解析失败（${include.path}）：${message}`)
+        continue
+      }
+      const applyError = applyIncludeAtTarget(resolved, include.target.trim(), fragment, include.mode)
+      if (applyError) {
+        structuralErrors.push(`includes[${index}] ${applyError}`)
+      }
+    }
+    if (structuralErrors.length === 0) {
+      structuralErrors.push(
+        ...validateBlueprintV2Typescript(
+          parseBlueprintV2Json(JSON.stringify(resolved)),
+          id,
+        ),
+      )
+    }
+    if (structuralErrors.length > 0) {
+      return { ok: false, errors: structuralErrors, usedTauri: false }
+    }
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e)
+    return { ok: false, errors: [message], usedTauri: false }
+  }
+
   const payload = [...files.entries()].map(([path, content]) => ({ path, content }))
 
   if (!isTauriRuntime()) {

@@ -9,7 +9,7 @@ export type BlueprintIncludeEntry = {
   id?: string
   path: string
   target: string
-  mode: 'merge' | 'replace' | string
+  mode: 'merge' | 'replace'
 }
 
 export type BlueprintSlotGroupEntry = {
@@ -151,6 +151,71 @@ export type BlueprintSlotEntry = {
   url?: string | null
   local_memory_provider_id?: string | null
 }
+
+const BLUEPRINT_ROOT_KEYS = new Set([
+  'schema_version',
+  'meta',
+  'slot_registry',
+  'includes',
+  'expert_overlay',
+  'groups',
+  'runtime_config',
+])
+
+const SLOT_KEYS = new Set([
+  'type',
+  'label',
+  'backend',
+  'position',
+  'plugin',
+  'plugins',
+  'model',
+  'url',
+  'local_memory_provider_id',
+])
+
+const SLOT_TYPES = [
+  'memory',
+  'emotion',
+  'event',
+  'prompt',
+  'llm',
+  'agent',
+  'complex_emotion',
+] as const
+
+const GROUP_SLOT_TYPES = SLOT_TYPES.filter((type) => type !== 'complex_emotion')
+
+const SLOT_BACKENDS: Record<string, readonly string[]> = {
+  memory: ['builtin', 'remote', 'directory', 'local', 'none'],
+  emotion: ['builtin', 'remote', 'directory', 'none'],
+  event: ['builtin', 'remote', 'directory', 'none'],
+  prompt: ['builtin', 'remote', 'directory', 'none'],
+  llm: ['ollama', 'remote', 'directory', 'none'],
+  agent: ['builtin', 'remote', 'directory', 'none'],
+  complex_emotion: ['builtin', 'remote', 'directory'],
+}
+
+const GROUP_KEYS = new Set(['label', 'description', 'type', 'members'])
+const INCLUDE_KEYS = new Set(['id', 'path', 'target', 'mode'])
+const INCLUDE_TARGETS = new Set([
+  'meta.personality',
+  'meta.life_trajectory',
+  'meta.life_schedule',
+  'expert_overlay',
+])
+const RUNTIME_CONFIG_KEYS = new Set([
+  'interaction_mode',
+  'memory_config',
+  'reply_quality_anchor',
+  'remote_fallback_to_builtin',
+  'dual_core',
+  'identity_binding',
+  'evolution',
+  'ollama_model',
+  'remote_presence',
+  'autonomous_scene',
+])
 
 type PluginBackendsShape = {
   memory?: string
@@ -396,13 +461,206 @@ export function parseBlueprintV2Json(raw: string): BlueprintV2 {
 /** v2 蓝图最小校验（编写器 TS 兜底；完整校验走 wasm / pack validate）。 */
 export function validateBlueprintV2Typescript(bp: BlueprintV2, roleId?: string): string[] {
   const errors: string[] = []
+  const root = bp as unknown as Record<string, unknown>
+  if (bp.schema_version !== 2) errors.push(`schema_version 须为 2（当前 ${bp.schema_version}）`)
+  for (const key of Object.keys(root)) {
+    if (!BLUEPRINT_ROOT_KEYS.has(key)) errors.push(`pipeline.ocblueprint 含未知顶层字段「${key}」`)
+  }
+
   const id = String(bp.meta.id ?? '').trim()
   if (!id) errors.push('meta.id 不能为空')
   if (roleId && id && roleId.trim() !== id) {
     errors.push(`meta.id（${id}）与目录名（${roleId}）不一致`)
   }
-  const llmSlots = Object.values(bp.slot_registry).filter((s) => s.type === 'llm')
-  if (llmSlots.length === 0) errors.push('slot_registry 须至少包含一个 type: llm 实例')
+
+  const slotEntries = Object.entries(bp.slot_registry)
+  if (slotEntries.length === 0) errors.push('slot_registry 不能为空')
+  const positions = new Set<string>()
+  let llmCount = 0
+  for (const [key, slot] of slotEntries) {
+    if (!key.trim()) {
+      errors.push('slot_registry 键名不能为空')
+      continue
+    }
+    if (!isRecord(slot)) {
+      errors.push(`slot_registry[${key}] 须为对象`)
+      continue
+    }
+    for (const field of Object.keys(slot)) {
+      if (!SLOT_KEYS.has(field)) errors.push(`slot_registry[${key}] 含未知字段「${field}」`)
+    }
+
+    const type = typeof slot.type === 'string' ? slot.type.trim() : ''
+    const label = typeof slot.label === 'string' ? slot.label.trim() : ''
+    const backend = typeof slot.backend === 'string' ? slot.backend.trim() : ''
+    const position = slot.position
+    if (!label) errors.push(`slot_registry[${key}].label 不能为空`)
+    if (!(SLOT_TYPES as readonly string[]).includes(type)) {
+      errors.push(`slot_registry[${key}].type「${type}」非法`)
+      continue
+    }
+    if (!Number.isInteger(position) || Number(position) < 0) {
+      errors.push(`slot_registry[${key}].position 须为非负整数`)
+    } else {
+      const positionKey = `${type}:${position}`
+      if (positions.has(positionKey)) {
+        errors.push(`slot_registry：type「${type}」下 position ${position} 重复`)
+      }
+      positions.add(positionKey)
+    }
+    if (type === 'llm') llmCount += 1
+
+    const allowedBackends = SLOT_BACKENDS[type] ?? []
+    if (!allowedBackends.includes(backend)) {
+      errors.push(
+        `slot_registry[${key}]：type「${type}」的 backend「${backend}」非法（允许: ${allowedBackends.join(', ')}）`,
+      )
+    }
+
+    const hasPlugin = typeof slot.plugin === 'string' && slot.plugin.trim().length > 0
+    if (slot.plugin != null && typeof slot.plugin !== 'string') {
+      errors.push(`slot_registry[${key}].plugin 须为字符串或 null`)
+    }
+    if (slot.plugins != null && !Array.isArray(slot.plugins)) {
+      errors.push(`slot_registry[${key}].plugins 须为字符串数组或 null`)
+    } else if (
+      Array.isArray(slot.plugins)
+      && slot.plugins.some((plugin) => typeof plugin !== 'string')
+    ) {
+      errors.push(`slot_registry[${key}].plugins 须为字符串数组或 null`)
+    }
+    for (const optionalField of ['model', 'url', 'local_memory_provider_id'] as const) {
+      if (slot[optionalField] != null && typeof slot[optionalField] !== 'string') {
+        errors.push(`slot_registry[${key}].${optionalField} 须为字符串或 null`)
+      }
+    }
+    const plugins = Array.isArray(slot.plugins)
+      ? slot.plugins.filter((plugin): plugin is string => typeof plugin === 'string' && plugin.trim().length > 0)
+      : []
+    if (type !== 'agent' && hasPlugin && plugins.length > 0) {
+      errors.push(`slot_registry[${key}]：非 agent 槽位不得同时包含 plugin 与 plugins`)
+    }
+    if (type === 'agent' && backend !== 'directory' && plugins.length > 0) {
+      errors.push(`slot_registry[${key}]：agent 非 directory 后端不得包含 plugins`)
+    }
+    if (backend === 'directory' && !hasPlugin && plugins.length === 0) {
+      errors.push(`slot_registry[${key}]：directory 后端须指定 plugin 或 plugins`)
+    }
+    if (type === 'llm' && backend === 'ollama' && typeof slot.model === 'string' && !slot.model.trim()) {
+      errors.push(`slot_registry[${key}]：ollama 槽位的 model 若存在则不得为空`)
+    }
+  }
+  if (llmCount === 0) errors.push('slot_registry 须至少包含一个 type: llm 实例')
+
+  const memberOwners = new Map<string, string>()
+  const groups = bp.groups
+  if (groups != null && !isRecord(groups)) {
+    errors.push('groups 须为对象')
+  }
+  for (const [groupId, group] of Object.entries(isRecord(groups) ? groups : {})) {
+    if (!groupId.trim()) {
+      errors.push('groups 键名不能为空')
+      continue
+    }
+    if (!isRecord(group)) {
+      errors.push(`groups[${groupId}] 须为对象`)
+      continue
+    }
+    for (const field of Object.keys(group)) {
+      if (!GROUP_KEYS.has(field)) errors.push(`groups[${groupId}] 含未知字段「${field}」`)
+    }
+    const label = typeof group.label === 'string' ? group.label.trim() : ''
+    const type = typeof group.type === 'string' ? group.type.trim() : ''
+    const members = Array.isArray(group.members) ? group.members : []
+    if (!label) errors.push(`groups[${groupId}].label 不能为空`)
+    if (!(GROUP_SLOT_TYPES as readonly string[]).includes(type)) {
+      errors.push(`groups[${groupId}].type「${type}」非法`)
+    }
+    if (members.length === 0) errors.push(`groups[${groupId}].members 不能为空`)
+    for (const memberValue of members) {
+      const member = typeof memberValue === 'string' ? memberValue.trim() : ''
+      if (!member) {
+        errors.push(`groups[${groupId}].members 含空键名`)
+        continue
+      }
+      const slot = bp.slot_registry[member]
+      if (!slot) {
+        errors.push(`groups[${groupId}].members 引用未知 slot_registry 键「${member}」`)
+        continue
+      }
+      if (slot.type.trim() !== type) {
+        errors.push(`groups[${groupId}].members「${member}」与 groups.type「${type}」不一致`)
+      }
+      const previous = memberOwners.get(member)
+      if (previous) errors.push(`slot_registry 键「${member}」同时属于 groups「${previous}」与「${groupId}」`)
+      memberOwners.set(member, groupId)
+    }
+  }
+
+  const includes = root.includes
+  if (includes != null && !Array.isArray(includes)) {
+    errors.push('includes 须为数组')
+  } else {
+    for (const [index, includeValue] of (includes ?? []).entries()) {
+      if (!isRecord(includeValue)) {
+        errors.push(`includes[${index}] 须为对象`)
+        continue
+      }
+      for (const field of Object.keys(includeValue)) {
+        if (!INCLUDE_KEYS.has(field)) errors.push(`includes[${index}] 含未知字段「${field}」`)
+      }
+      if (includeValue.id != null && typeof includeValue.id !== 'string') {
+        errors.push(`includes[${index}].id 须为字符串`)
+      }
+      const path = typeof includeValue.path === 'string' ? includeValue.path.trim() : ''
+      const target = typeof includeValue.target === 'string' ? includeValue.target.trim() : ''
+      const mode = typeof includeValue.mode === 'string' ? includeValue.mode.trim() : ''
+      if (!path) errors.push(`includes[${index}].path 不能为空`)
+      if (
+        path.includes('\\')
+        || path.startsWith('/')
+        || path.includes('..')
+        || path.includes('//')
+        || !/^[A-Za-z0-9_./-]+$/.test(path)
+      ) {
+        errors.push(`includes[${index}].path 须为包内安全相对路径`)
+      }
+      if (
+        !INCLUDE_TARGETS.has(target)
+        && !/^slot_registry\.[^.]+(?:\.[^.]+)*$/.test(target)
+      ) {
+        errors.push(`includes[${index}].target「${target}」非法`)
+      }
+      if (mode !== 'merge' && mode !== 'replace') {
+        errors.push(`includes[${index}].mode「${mode}」非法（允许: merge, replace）`)
+      }
+    }
+  }
+
+  if (bp.expert_overlay != null && !isRecord(bp.expert_overlay)) {
+    errors.push('expert_overlay 须为对象')
+  }
+
+  if (bp.runtime_config != null) {
+    if (!isRecord(bp.runtime_config)) {
+      errors.push('runtime_config 须为对象')
+    } else {
+      for (const key of Object.keys(bp.runtime_config)) {
+        if (!RUNTIME_CONFIG_KEYS.has(key)) errors.push(`runtime_config 含未知字段「${key}」`)
+      }
+      const dualCore = bp.runtime_config.dual_core
+      if (dualCore != null) {
+        if (!isRecord(dualCore)) {
+          errors.push('runtime_config.dual_core 须为对象')
+        } else {
+          for (const key of Object.keys(dualCore)) {
+            if (key !== 'enabled') errors.push(`runtime_config.dual_core 含未知字段「${key}」`)
+          }
+        }
+      }
+    }
+  }
+
   return errors
 }
 

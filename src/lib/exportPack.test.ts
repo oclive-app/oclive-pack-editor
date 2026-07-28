@@ -105,13 +105,23 @@ describe('buildRolePackFiles', () => {
   it('preserves blueprint extensions supplied by an imported pack', () => {
     const files = buildRolePackFiles('x', baseManifest, { schema_version: 1 }, {
       preservedBlueprintFields: {
-        includes: [{ path: 'blueprint/includes/routes.json', mode: 'strict' }],
+        includes: [
+          {
+            path: 'blueprint/includes/personality.json',
+            target: 'meta.personality',
+            mode: 'replace',
+          },
+        ],
         runtime_config: { interaction_mode: 'pure_chat' },
       },
     })
     const blueprint = JSON.parse(files.get(`x/${PIPELINE_BLUEPRINT_FILENAME}`)!)
     expect(blueprint.includes).toEqual([
-      { path: 'blueprint/includes/routes.json', mode: 'strict' },
+      {
+        path: 'blueprint/includes/personality.json',
+        target: 'meta.personality',
+        mode: 'replace',
+      },
     ])
     expect(blueprint.runtime_config).toEqual({ interaction_mode: 'pure_chat' })
   })

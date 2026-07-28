@@ -20,6 +20,7 @@ import {
   type SceneEditorEntry,
 } from './scenePackUser'
 import { normalizeUserIdentityTemplatePath } from './userIdentities'
+import { ADULT_EXTENSION_FILENAME } from './adultExtension'
 
 export type ExportableManifest = Record<string, unknown>
 export type ExportableSettings = Record<string, unknown>
@@ -82,6 +83,8 @@ export type PackExtraFiles = {
   includeDefaultReplyQualityAnchor?: boolean
   /** 可选：`roles/{id}/config.json` 全文 */
   configJson?: string
+  /** Optional Chat Pro adult-role extension; exported inside the same role pack. */
+  adultExtensionJson?: string
   /** 可选：`roles/{id}/portrait_catalog.json` 全文（A2 SSOT） */
   portraitCatalogJson?: string
   /** 可选：`roles/{id}/user_identities/index.json` 全文 */
@@ -176,6 +179,14 @@ export function buildRolePackFiles(
     files.set(
       `${id}/user_identities/index.json`,
       uiIndexRaw.endsWith('\n') ? uiIndexRaw : `${uiIndexRaw}\n`,
+    )
+  }
+
+  const adultRaw = extra?.adultExtensionJson?.trim()
+  if (adultRaw) {
+    files.set(
+      `${id}/${ADULT_EXTENSION_FILENAME}`,
+      adultRaw.endsWith('\n') ? adultRaw : `${adultRaw}\n`,
     )
   }
 

@@ -25,6 +25,7 @@ export type ApplyLoadedPackInput = {
   emotionImageFiles?: File[]
   portraitCatalogJson?: string
   configJson?: string
+  adultExtensionJson?: string
   creatorMessage?: string
   uiJson?: string
   authorJson?: string
@@ -48,6 +49,7 @@ export type ApplyLoadedPackTargets = {
   visualPresentationEnabled: { value: boolean }
   visualPresentationBackend: { value: string }
   visualPresentationLive2dModel: { value: string }
+  adultExtensionJson?: { value: string }
   creatorMessageToOthers: { value: string }
   creatorMessageMode: { value: CreatorMessageExportMode }
   uiConfig: UiConfig
@@ -77,6 +79,7 @@ export function importedPackToApplyInput(imp: ImportedRolePack): ApplyLoadedPack
     emotionImageFiles: imp.emotionImageFiles,
     portraitCatalogJson: imp.portraitCatalogJson,
     configJson: imp.configJson,
+    adultExtensionJson: imp.adultExtensionJson,
     creatorMessage: imp.creatorMessage,
     uiJson: imp.uiJson,
     authorJson: imp.authorJson,
@@ -136,6 +139,8 @@ export function applyLoadedPackToEditor(input: ApplyLoadedPackInput, targets: Ap
   targets.visualPresentationEnabled.value = cfg.visual.enabled
   targets.visualPresentationBackend.value = cfg.visual.backend
   targets.visualPresentationLive2dModel.value = cfg.visual.live2dModel ?? ''
+  if (targets.adultExtensionJson)
+    targets.adultExtensionJson.value = input.adultExtensionJson ?? ''
   targets.creatorMessageToOthers.value = input.creatorMessage ?? ''
   Object.assign(targets.uiConfig, parseUiConfigJson(input.uiJson?.trim() || '{}'))
 

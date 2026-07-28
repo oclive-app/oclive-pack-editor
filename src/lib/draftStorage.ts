@@ -36,6 +36,7 @@ export type PackDraftSnapshot = {
   manifestText: string
   settingsText: string
   corePersonalityText: string
+  adultExtensionJson?: string
   memorySeedJson?: string
   userIdentityFiles?: RolePackTextFile[]
   userIdentitiesIndexJson?: string

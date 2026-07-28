@@ -97,6 +97,7 @@ import {
   type PortraitExtraDraftMeta,
   type PortraitSlotDraftMeta,
 } from '../lib/draftStorage'
+import { validateAdultExtension } from '../lib/adultExtension'
 
 const STORAGE_REQUIRE_CHECKS = 'oclive-pack-editor-require-checks-before-export'
 const STORAGE_CREATION_MODE = 'oclive-pack-editor-creation-mode'
@@ -114,6 +115,7 @@ export function usePackEditor() {
   const manifestText = ref(DEFAULT_MANIFEST_JSON)
   const settingsText = ref(DEFAULT_SETTINGS_JSON)
   const corePersonalityText = ref(DEFAULT_CORE_PERSONALITY_TEXT)
+  const adultExtensionJson = ref('')
   /** 创作者维护的只读初始记忆；与运行时 LTM/STM 分离。 */
   const memorySeedJson = ref('')
   const userIdentityFiles = ref<RolePackTextFile[]>([])
@@ -357,6 +359,9 @@ export function usePackEditor() {
       creatorMessage: creatorMessageToOthers.value,
       creatorMessageMode: creatorMessageMode.value,
       configJson: buildSimpleConfigJson(profiled.portraitEnabled && hasCatalog, profiled.visual),
+      ...(adultExtensionJson.value.trim()
+        ? { adultExtensionJson: adultExtensionJson.value }
+        : {}),
       ...(hasCatalog
         ? { portraitCatalogJson: buildPortraitCatalogJson(slotMap, extras) }
         : {}),
@@ -567,7 +572,7 @@ export function usePackEditor() {
     return typeof id === 'string' ? id : ''
   })
 
-  async function collectValidationState(): Promise<{
+  async function collectBaseValidationState(): Promise<{
     errors: string[]
     wasmUsed: boolean
     ok: boolean
@@ -585,7 +590,13 @@ export function usePackEditor() {
       portraitExtraEntries.value,
       Object.keys(portraitSlotFiles.value).length > 0,
     )
-    const errors = [...r.errors, ...kErrs, ...memoryErrs, ...identityErrs, ...portrait.errors]
+    const errors = [
+      ...r.errors,
+      ...kErrs,
+      ...memoryErrs,
+      ...identityErrs,
+      ...portrait.errors,
+    ]
     return {
       errors,
       wasmUsed: r.wasmUsed,
@@ -596,6 +607,35 @@ export function usePackEditor() {
         identityErrs.length === 0 &&
         portrait.errors.length === 0,
     }
+  }
+
+  async function collectValidationState(): Promise<{
+    errors: string[]
+    wasmUsed: boolean
+    ok: boolean
+  }> {
+    const base = await collectBaseValidationState()
+    const adultErrs = validateAdultExtension(
+      adultExtensionJson.value,
+      sceneIdsFromEditorState(),
+    )
+    return {
+      errors: [...base.errors, ...adultErrs],
+      wasmUsed: base.wasmUsed,
+      ok: base.ok && adultErrs.length === 0,
+    }
+  }
+
+  async function canEnterAdultEditor(): Promise<boolean> {
+    if (noActivePackForCheck())
+      return false
+    const base = await collectBaseValidationState()
+    if (!base.ok) {
+      validationErrors.value = base.errors
+      validationLastUsedWasm.value = base.wasmUsed
+      setFeedback(pe('packEditor.adult.baseInvalid', { count: base.errors.length }), true)
+    }
+    return base.ok
   }
 
   async function runValidate(): Promise<void> {
@@ -872,6 +912,7 @@ export function usePackEditor() {
     manifestText,
     settingsText,
     corePersonalityText,
+    adultExtensionJson,
     memorySeedJson,
     userIdentityFiles,
     userIdentitiesIndexJson,
@@ -997,6 +1038,7 @@ export function usePackEditor() {
       manifestText: manifestText.value,
       settingsText: settingsText.value,
       corePersonalityText: corePersonalityText.value,
+      adultExtensionJson: adultExtensionJson.value,
       memorySeedJson: memorySeedJson.value,
       userIdentityFiles: userIdentityFiles.value.map((f) => ({ ...f })),
       userIdentitiesIndexJson: userIdentitiesIndexJson.value,
@@ -1035,6 +1077,7 @@ export function usePackEditor() {
     manifestText.value = snapshot.manifestText
     settingsText.value = snapshot.settingsText
     corePersonalityText.value = snapshot.corePersonalityText
+    adultExtensionJson.value = snapshot.adultExtensionJson ?? ''
     memorySeedJson.value = snapshot.memorySeedJson ?? ''
     userIdentityFiles.value = (snapshot.userIdentityFiles ?? []).map((f) => ({ ...f }))
     userIdentitiesIndexJson.value = snapshot.userIdentitiesIndexJson ?? ''
@@ -1112,6 +1155,7 @@ export function usePackEditor() {
     manifestText,
     settingsText,
     corePersonalityText,
+    adultExtensionJson,
     memorySeedJson,
     userIdentityFiles,
     userIdentitiesIndexJson,
@@ -1153,6 +1197,7 @@ export function usePackEditor() {
     manifestRoleId,
     bindPackSession,
     runValidate,
+    canEnterAdultEditor,
     onImportPack,
     onPortraitSlotPick,
     onPortraitSlotClear,

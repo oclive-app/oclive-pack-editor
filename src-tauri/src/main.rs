@@ -233,6 +233,8 @@ struct RolePackEditorLoad {
     #[serde(skip_serializing_if = "Option::is_none")]
     config_text: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    adult_extension_text: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     portrait_catalog_text: Option<String>,
     catalog_assets: Vec<RolePackCatalogAsset>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -511,6 +513,11 @@ fn load_role_pack_for_editor(role_dir: String) -> Result<RolePackEditorLoad, Str
             .is_file()
             .then(|| fs::read_to_string(&config_path).map_err(|e| e.to_string()))
             .transpose()?;
+        let adult_extension_path = root.join("adult_extension.json");
+        let adult_extension_text = adult_extension_path
+            .is_file()
+            .then(|| fs::read_to_string(&adult_extension_path).map_err(|e| e.to_string()))
+            .transpose()?;
         let ui_path = root.join("user_identities").join("index.json");
         let user_identities_index_text = ui_path
             .is_file()
@@ -538,6 +545,7 @@ fn load_role_pack_for_editor(role_dir: String) -> Result<RolePackEditorLoad, Str
             manifest_text,
             settings_text: Some(settings_text),
             config_text,
+            adult_extension_text,
             portrait_catalog_text,
             catalog_assets,
             user_identities_index_text,

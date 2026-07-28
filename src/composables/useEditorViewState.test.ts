@@ -15,6 +15,10 @@ describe('useEditorViewState (T07 settings tier / view routing)', () => {
     await nextTick()
     expect(shouldMountView('advanced')).toBe(true)
     expect(shouldMountView('simple')).toBe(false)
+    expect(shouldMountView('adult')).toBe(false)
+    editorView.value = 'adult'
+    await nextTick()
+    expect(shouldMountView('adult')).toBe(true)
   })
 
   it('calls beforeSwitch hook when view changes', async () => {

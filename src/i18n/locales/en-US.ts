@@ -704,7 +704,7 @@ export default {
       exportFolder: "Write to roles",
       exportFolderTitle: "Write to roles folder for local play",
       saveDraft: "Save draft",
-      saveDraftTitle: "Save current Simple/Advanced edits locally (emotion image files not included)",
+      saveDraftTitle: "Save base and adult-extension edits locally (emotion image files not included)",
       saveDraftAria: "Save local draft",
     },
     feedback: {
@@ -748,6 +748,47 @@ export default {
       saved: "Draft saved: {name}",
       continued: "Draft “{name}” restored. You can keep editing.",
       missing: "Draft file not found; it may have been cleared.",
+    },
+    adult: {
+      kicker: "Optional role-pack extension",
+      title: "Adult content extension",
+      lead:
+        "This page edits only the optional adult_extension.json. The base role pack stays simple and portable. Chat Pro loads this extension only after adult confirmation and both global and per-role gates are enabled.",
+      baseInvalid:
+        "The base role pack still has {count} issue(s). Fix and pass base validation before editing the adult extension.",
+      emptyTitle: "This role pack has no adult extension",
+      emptyLead:
+        "Creating one adds a separate file without changing the base persona or ordinary scene format. Removing it leaves the base pack intact.",
+      create: "Create adult extension",
+      remove: "Remove adult extension",
+      removeConfirm:
+        "Remove adult_extension.json? The base role pack is unaffected, but all content entered on this page will be deleted.",
+      parseError: "Cannot parse adult_extension.json: {error}",
+      baseTitle: "Adult-state persona and dialogue",
+      characterAdult: "I confirm this character is an adult in this extension",
+      characterAdultHint:
+        "Pack validation fails until confirmed. Do not place underage characters in this extension.",
+      persona: "Adult-state persona",
+      personaPlaceholder:
+        "Describe only additions or changes relative to the base persona; avoid duplicating the entire base persona.",
+      dialogueGuidance: "Flirting and intimate-dialogue guidance",
+      dialoguePlaceholder:
+        "Describe tone, boundaries, initiative, and a natural response after exit. Never speak for the user; naturally end the current interaction when the user refuses.",
+      pacingTitle: "Creator pacing suggestion",
+      pacingLead: "This is only the role-pack default. Chat Pro users can override it globally.",
+      pacingMode: "Beat timing source",
+      pacingCreator: "Use creator-suggested interval",
+      pacingAi: "Let AI suggest from the story",
+      pacingInterval: "Suggested interval (ms)",
+      scenesTitle: "Adult directions for ordinary scenes",
+      scenesLead:
+        "The extension may reference only scenes that already exist in the base pack. Sync adds new base scenes and removes stale references.",
+      syncScenes: "Sync with base scenes",
+      noScenes: "The base role pack has no scenes yet. Add one in Simple or Advanced first.",
+      sceneHeading: "Scene: {id}",
+      sceneDirection: "Natural direction in this scene",
+      actionFlow: "Action flow and beat guidance",
+      sceneDialogue: "Scene-specific dialogue guidance",
     },
     shellMenu: {
       localeAria: "UI language",
@@ -808,6 +849,7 @@ export default {
       simple: "Simple",
       scenes: "Scenes",
       advanced: "Advanced",
+      adult: "Adult extension",
       check: "Checks",
       chat: "Chat",
       feedback: "Feedback",
@@ -819,6 +861,7 @@ export default {
       simple: "Simple",
       scenes: "Scenes",
       advanced: "Advanced",
+      adult: "Adult content extension",
       check: "Checks & export",
       chat: "Try chat",
       feedback: "Feedback workspace",

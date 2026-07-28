@@ -99,17 +99,23 @@ describe('importRolePackFromZip', () => {
   it('preserves safe extension files and blueprint fields for re-export', async () => {
     const z = new JSZip()
     const blueprint = JSON.parse(minimalBlueprintJsonForRole('hero'))
-    blueprint.includes = [{ path: 'blueprint/includes/routes.json', mode: 'strict' }]
+    blueprint.includes = [
+      {
+        path: 'blueprint/includes/personality.json',
+        target: 'meta.personality',
+        mode: 'replace',
+      },
+    ]
     z.file(`hero/${PIPELINE_BLUEPRINT_FILENAME}`, JSON.stringify(blueprint))
     z.file('hero/core_personality.txt', 'persona')
     z.file('hero/voice_profile.json', '{"schema_version":1}')
-    z.file('hero/blueprint/includes/routes.json', '{"routes":[]}')
+    z.file('hero/blueprint/includes/personality.json', '{"warmth":0.8}')
     const f = await zipToFile(z, 'p.zip')
     const r = await importRolePackFromZip(f)
     expect(r.preservedBlueprintFields?.includes).toEqual(blueprint.includes)
     expect(r.preservedFiles?.map((x) => x.relPath)).toEqual([
       'voice_profile.json',
-      'blueprint/includes/routes.json',
+      'blueprint/includes/personality.json',
     ])
   })
 

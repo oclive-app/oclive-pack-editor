@@ -24,11 +24,13 @@ import {
 
 const AdvancedCreationPanel = defineAsyncComponent(() => import('./components/pack/AdvancedCreationPanel.vue'))
 const SimpleCreationPanel = defineAsyncComponent(() => import('./components/pack/SimpleCreationPanel.vue'))
+const AdultExtensionPanel = defineAsyncComponent(() => import('./components/pack/AdultExtensionPanel.vue'))
 
 const {
   manifestText,
   settingsText,
   corePersonalityText,
+  adultExtensionJson,
   memorySeedJson,
   userIdentityFiles,
   userIdentitiesIndexJson,
@@ -53,6 +55,7 @@ const {
   folderExportOk,
   manifestRoleId,
   runValidate,
+  canEnterAdultEditor,
   onImportPack,
   onPortraitSlotPick,
   onPortraitSlotClear,
@@ -104,7 +107,9 @@ onMounted(() => {
 const showSaveDraft = computed(
   () =>
     packSession.value !== 'idle' &&
-    (editorView.value === 'simple' || editorView.value === 'advanced'),
+    (editorView.value === 'simple'
+      || editorView.value === 'advanced'
+      || editorView.value === 'adult'),
 )
 
 const { themePreference, setTheme, bumpScale, scaleLabel } = usePackShellPreferences()
@@ -160,15 +165,18 @@ const editorNav = computed((): { id: EditorViewId; label: string; icon: string }
   { id: 'start', label: String(t('packEditor.nav.start')), icon: '🏠' },
   { id: 'simple', label: String(t('packEditor.nav.simple')), icon: '📝' },
   { id: 'advanced', label: String(t('packEditor.nav.advanced')), icon: '⚙️' },
+  { id: 'adult', label: String(t('packEditor.nav.adult')), icon: '18+' },
 ])
 
-function goEditorView(id: EditorViewId) {
-  if ((id === 'simple' || id === 'advanced') && packSession.value === 'idle') {
+async function goEditorView(id: EditorViewId) {
+  if ((id === 'simple' || id === 'advanced' || id === 'adult') && packSession.value === 'idle') {
     lastMessage.value = String(t('packEditor.draft.pickFirst'))
     lastMessageIsError.value = true
     editorView.value = 'start'
     return
   }
+  if (id === 'adult' && !(await canEnterAdultEditor()))
+    return
   editorView.value = id
   if (id === 'simple') creationMode.value = 'simple'
   if (id === 'advanced') creationMode.value = 'advanced'
@@ -179,6 +187,7 @@ const viewTitle = computed(() => {
   if (id === 'start') return String(t('packEditor.titles.start'))
   if (id === 'simple') return String(t('packEditor.titles.simple'))
   if (id === 'advanced') return String(t('packEditor.titles.advanced'))
+  if (id === 'adult') return String(t('packEditor.titles.adult'))
   return ''
 })
 
@@ -211,7 +220,7 @@ function onSaveDraft(showToast = true): void {
 }
 
 function autoSaveDraftOnLeaveEditView(prev: EditorViewId | undefined): void {
-  if (prev !== 'simple' && prev !== 'advanced') return
+  if (prev !== 'simple' && prev !== 'advanced' && prev !== 'adult') return
   if (packSession.value === 'idle') return
   onSaveDraft(false)
 }
@@ -471,6 +480,13 @@ function onCreateNewPack() {
           @portrait-extra-apply-choices="applyPortraitExtraUserChoices"
           @portrait-extra-add="addPortraitExtraEntry"
           @portrait-extra-remove="removePortraitExtraEntry"
+        />
+      </div>
+
+      <div v-if="shouldMountView('adult')" v-show="editorView === 'adult'" class="view-stack">
+        <AdultExtensionPanel
+          v-model="adultExtensionJson"
+          :scene-ids="sceneEditorEntries.map((entry) => entry.sceneId)"
         />
       </div>
     </div>

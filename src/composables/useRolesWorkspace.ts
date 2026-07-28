@@ -130,6 +130,7 @@ export function useRolesWorkspace(applyTargets: ApplyLoadedPackTargets) {
     applyTargets.manifestText.value = DEFAULT_MANIFEST_JSON
     applyTargets.settingsText.value = DEFAULT_SETTINGS_JSON
     applyTargets.corePersonalityText.value = DEFAULT_CORE_PERSONALITY_TEXT
+    if (applyTargets.adultExtensionJson) applyTargets.adultExtensionJson.value = ''
     if (applyTargets.memorySeedJson) applyTargets.memorySeedJson.value = ''
     if (applyTargets.userIdentityFiles) applyTargets.userIdentityFiles.value = []
     if (applyTargets.userIdentitiesIndexJson) applyTargets.userIdentitiesIndexJson.value = ''
@@ -217,6 +218,7 @@ export function useRolesWorkspace(applyTargets: ApplyLoadedPackTargets) {
             : {},
           portraitCatalogJson: load.portraitCatalogText ?? '',
           configJson: load.configText ?? '',
+          adultExtensionJson: load.adultExtensionText ?? '',
           emotionImageFiles: catalogFiles,
           sceneEditorEntries,
         },

@@ -21,6 +21,7 @@ import {
   PIPELINE_BLUEPRINT_FILENAME,
   REPLY_QUALITY_ANCHOR_REL_PATH,
 } from './blueprintV2'
+import { ADULT_EXTENSION_FILENAME } from './adultExtension'
 export type ImportedRolePack = {
   roleId: string
   manifestJson: string
@@ -34,6 +35,8 @@ export type ImportedRolePack = {
   portraitCatalogJson: string
   /** roles/{id}/config.json 全文（可选） */
   configJson: string
+  /** Optional Chat Pro adult-role extension. */
+  adultExtensionJson: string
   /** roles/{id}/creator_message.txt 全文（可含多行，与导出模式一致） */
   creatorMessage: string
   /** roles/{id}/ui.json（可选） */
@@ -199,6 +202,7 @@ export async function importRolePackFromZip(file: File): Promise<ImportedRolePac
 
   const portraitCatalogJson = await readText('portrait_catalog.json')
   const configJson = await readText('config.json')
+  const adultExtensionJson = await readText(ADULT_EXTENSION_FILENAME)
 
   const sceneIds = mergedSceneIds(
     Array.isArray(manifest.scenes) ? (manifest.scenes as string[]) : [],
@@ -219,6 +223,7 @@ export async function importRolePackFromZip(file: File): Promise<ImportedRolePac
     'ui.json',
     'author.json',
     'config.json',
+    ADULT_EXTENSION_FILENAME,
     'portrait_catalog.json',
     'user_identities/index.json',
     REPLY_QUALITY_ANCHOR_REL_PATH,
@@ -281,6 +286,7 @@ export async function importRolePackFromZip(file: File): Promise<ImportedRolePac
     emotionImageFiles,
     portraitCatalogJson,
     configJson,
+    adultExtensionJson,
     creatorMessage,
     uiJson,
     authorJson,

@@ -17,6 +17,7 @@ export type RolePackEditorLoadPayload = {
   manifestText: string
   settingsText?: string
   configText?: string
+  adultExtensionText?: string
   portraitCatalogText?: string
   catalogAssets?: RolePackCatalogAssetPayload[]
   userIdentitiesIndexText?: string

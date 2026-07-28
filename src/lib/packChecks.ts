@@ -33,7 +33,7 @@ export function parsePackDocuments(
 export type PackCheckResult = {
   ok: boolean
   errors: string[]
-  /** 桌面版走 Tauri v2 蓝图校验时为 true */
+  /** 桌面版走历史命名的 Tauri 基础蓝图校验时为 true */
   wasmUsed: boolean
 }
 

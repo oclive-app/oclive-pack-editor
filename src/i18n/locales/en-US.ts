@@ -608,12 +608,12 @@ export default {
   packChecks: {
     title: "Role pack checks",
     desc:
-      "Validate role-facing / runtime JSON and build Stable v4 pipeline.ocblueprint for contract checks. Imported v2 packs remain v2. Desktop uses Tauri validation aligned with pack validate; browser dev falls back to TypeScript. You can require checks before export; once passed, you can put the pack into roles for testing.",
+      "Validate role-facing / runtime JSON and build Stable v4 pipeline.ocblueprint for contract checks. Imported v2 packs remain v2. Desktop editor state first uses the Tauri base-blueprint check; final export validation dispatches exactly by v2 / v3 / v4. Browser development falls back to TypeScript.",
     status: {
-      neverRan: "Checks have not been run yet. After running, we’ll show whether Tauri v2 blueprint validation or TypeScript was used.",
-      lastRustWasm: "Last check: Tauri v2 blueprint validation",
+      neverRan: "Checks have not been run yet. After running, we’ll show whether Tauri base-blueprint validation or TypeScript was used.",
+      lastRustWasm: "Last check: Tauri base-blueprint validation",
       lastTypeScript: "Last check: TypeScript (Tauri validation unavailable)",
-      lastPackCheckRust: "Last pack check: Tauri v2 blueprint validation",
+      lastPackCheckRust: "Last pack check: Tauri base-blueprint validation",
       lastPackCheckTypeScript: "Last pack check: TypeScript",
     },
     runAll: "Run all checks",
@@ -698,8 +698,8 @@ export default {
     headerActions: {
       aria: "Checks and export",
       check: "Check pack",
-      checkTitle: "Validate persona / JSON / v2 blueprint contract (not Ollama or kernel environment)",
-      checkAria: "Check pack: validate persona, JSON, and v2 blueprint",
+      checkTitle: "Validate persona / JSON / Stable v4 (v2-compatible) blueprint contract (not Ollama or kernel environment)",
+      checkAria: "Check pack: validate persona, JSON, and blueprint contract",
       exportOcpak: "Export .ocpak",
       exportFolder: "Write to roles",
       exportFolderTitle: "Write to roles folder for local play",
@@ -730,7 +730,7 @@ export default {
     },
     replyQualityAnchorConfirm:
       "Include the recommended reply quality anchor in prompts/reply_quality_anchor.md on export?\n\n" +
-      "Writes the v2 recommended path: no parroting user lines, continue the topic on short acks, scale length to user input, do not put words in the user's mouth (aligned with oclive defaults).\n\n" +
+      "Writes the recommended role-pack path: no parroting user lines, continue the topic on short acks, scale length to user input, do not put words in the user's mouth (aligned with oclive defaults).\n\n" +
       "OK = include recommended content\nCancel = export JSON as-is",
     draft: {
       aria: "Start editing",
@@ -819,7 +819,7 @@ export default {
       aria: "Bind roles and open a pack",
       kicker: "Quick start",
       title: "Open an existing role or create new",
-      lead: "Pick your oclive roles root, load a v2 blueprint pack from the list, import zip, or start from a template.",
+      lead: "Pick your oclive roles root, load a v2 / Stable v4 blueprint pack from the list, import zip, or start from a template.",
       browserNote: "Browser build supports zip/ocpak import only; binding a roles directory requires the desktop app.",
       rootLabel: "Roles directory",
       rootUnset: "(not set)",
@@ -834,7 +834,7 @@ export default {
       hints: {
         pickRoot: "Choose the roles root (the folder that contains role subfolders).",
         empty: "No role packs with pipeline.ocblueprint found under this folder.",
-        onlyLegacy: "Only legacy manifest.json packs found; migrate to v2 blueprint first.",
+        onlyLegacy: "Only legacy manifest.json packs found; migrate to pipeline.ocblueprint first.",
       },
     },
     toast: {
@@ -1000,7 +1000,7 @@ export default {
       anchor: {
         aria: "Reply quality anchor",
         title: "Reply quality anchor",
-        lead: "On export, writes prompts/reply_quality_anchor.md (v2 path), aligned with the main app runtime.",
+        lead: "On export, writes prompts/reply_quality_anchor.md (recommended role-pack path), aligned with the main app runtime.",
         preview: "Preview (first 200 chars)",
         emptyPreview: "(empty)",
         presetSelect: "Preset",
@@ -1030,7 +1030,7 @@ export default {
       directoryPlugin: "directory.plugin_id",
     },
     check: {
-      lastRustWasm: "Last check: Tauri v2 blueprint validation",
+      lastRustWasm: "Last check: Tauri base-blueprint validation",
       lastTypeScript: "Last check: TypeScript (Tauri validation unavailable)",
       exportOcpak: "Export .ocpak (zip)",
       exportZip: "Export .zip",

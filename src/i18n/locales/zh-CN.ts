@@ -589,12 +589,12 @@ export default {
   packChecks: {
     title: "角色包检查",
     desc:
-      "校验角色门面 / 运行时 JSON，并构建 Stable v4 pipeline.ocblueprint 做契约检查。导入的 v2 会保持 v2。桌面版走与 pack validate 同源的 Tauri 校验；浏览器开发时回退 TypeScript。导出时可选校验，通过后即可把包放入 roles 测试。",
+      "校验角色门面 / 运行时 JSON，并构建 Stable v4 pipeline.ocblueprint 做契约检查。导入的 v2 会保持 v2。桌面编辑态先走 Tauri 基础蓝图校验；最终导出检查再按 v2 / v3 / v4 精确分派。浏览器开发时回退 TypeScript。",
     status: {
-      neverRan: "尚未运行检查；运行后将显示使用的校验方式（Tauri v2 蓝图校验或 TypeScript）。",
-      lastRustWasm: "最近一次检查：Tauri v2 蓝图校验",
+      neverRan: "尚未运行检查；运行后将显示使用的校验方式（Tauri 基础蓝图校验或 TypeScript）。",
+      lastRustWasm: "最近一次检查：Tauri 基础蓝图校验",
       lastTypeScript: "最近一次检查：TypeScript（Tauri 校验不可用）",
-      lastPackCheckRust: "上次角色包检查：Tauri v2 蓝图校验",
+      lastPackCheckRust: "上次角色包检查：Tauri 基础蓝图校验",
       lastPackCheckTypeScript: "上次角色包检查：TypeScript",
     },
     runAll: "运行全部检查",
@@ -676,8 +676,8 @@ export default {
     headerActions: {
       aria: "检查与导出",
       check: "检查角色包",
-      checkTitle: "校验人设与 JSON / v2 蓝图契约（非 Ollama 或内核环境检测）",
-      checkAria: "检查角色包：校验人设、JSON 与 v2 蓝图",
+      checkTitle: "校验人设与 JSON / Stable v4（兼容 v2）蓝图契约（非 Ollama 或内核环境检测）",
+      checkAria: "检查角色包：校验人设、JSON 与蓝图契约",
       exportOcpak: "导出 .ocpak",
       exportFolder: "写入 roles",
       exportFolderTitle: "写入 roles 文件夹，供本机试玩",
@@ -704,7 +704,7 @@ export default {
     },
     replyQualityAnchorConfirm:
       "是否在导出时写入推荐的「回复质量锚点」到 prompts/reply_quality_anchor.md？\n\n" +
-      "将写入 v2 推荐路径，含：禁止复述用户原句、简短确认时延续话题勿重复开场、按用户信息量调节篇幅（非固定字数）、不替用户拟定台词等（与 oclive 主程序默认一致）。\n\n" +
+      "将写入角色包推荐路径，含：禁止复述用户原句、简短确认时延续话题勿重复开场、按用户信息量调节篇幅（非固定字数）、不替用户拟定台词等（与 oclive 主程序默认一致）。\n\n" +
       "确定 = 加入推荐内容\n取消 = 不加入，按当前 JSON 原样导出",
     draft: {
       aria: "进入创作",
@@ -789,7 +789,7 @@ export default {
       aria: "绑定 roles 并打开角色包",
       kicker: "快速开始",
       title: "打开已有角色或新建",
-      lead: "选择本机 oclive 的 roles 根目录，从列表加载 v2 蓝图包；也可导入 zip 或创建新模板。",
+      lead: "选择本机 oclive 的 roles 根目录，从列表加载 v2 / Stable v4 蓝图包；也可导入 zip 或创建新模板。",
       browserNote: "浏览器版仅支持 zip/ocpak 导入；绑定 roles 目录扫描需桌面版。",
       rootLabel: "Roles 目录",
       rootUnset: "（未绑定）",
@@ -804,7 +804,7 @@ export default {
       hints: {
         pickRoot: "请先选择 roles 根目录（包含各角色子文件夹的那一层）。",
         empty: "该目录下未找到含 pipeline.ocblueprint 的角色包。",
-        onlyLegacy: "仅发现 legacy manifest.json 包，需先迁移为 v2 蓝图。",
+        onlyLegacy: "仅发现 legacy manifest.json 包，需先迁移为 pipeline.ocblueprint 蓝图。",
       },
     },
     toast: {
@@ -969,7 +969,7 @@ export default {
       anchor: {
         aria: "回复质量锚点",
         title: "回复质量锚点",
-        lead: "导出时写入 prompts/reply_quality_anchor.md（v2 推荐路径），与主程序运行时一致。",
+        lead: "导出时写入 prompts/reply_quality_anchor.md（角色包推荐路径），与主程序运行时一致。",
         preview: "预览（前 200 字）",
         emptyPreview: "（空）",
         presetSelect: "预设",
@@ -999,7 +999,7 @@ export default {
       directoryPlugin: "directory.plugin_id",
     },
     check: {
-      lastRustWasm: "最近一次检查：Tauri v2 蓝图校验",
+      lastRustWasm: "最近一次检查：Tauri 基础蓝图校验",
       lastTypeScript: "最近一次检查：TypeScript（Tauri 校验不可用）",
       exportOcpak: "导出 .ocpak（zip）",
       exportZip: "导出 .zip",

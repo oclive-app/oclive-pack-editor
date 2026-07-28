@@ -16,7 +16,7 @@
 | **专家模型路由**（`blueprint/includes/expert_routing.json`）、架构图 **`groups`**、蓝图 **`includes[]`** 合并 | **A.I.Live（oclivenewnew）** → 插件与后端管理 → 架构图 |
 | 对话、记忆持久化、`load_role` 最终校验 | **A.I.Live** |
 
-**保存注意事项**：侧栏「角色包」保存时会更新编写器管理的 `meta` / slot 字段，同时保留未知 meta 字段、多实例 `slot_registry` 以及 `includes`、`groups`、`expert_overlay`、`runtime_config`（避免冲掉主应用写入的扩展字段）。v3 / dual-core 蓝图当前不进入编写器编辑流程；请在主应用完成配置后使用编写器之外的工具管理，避免误作 v2 导入。
+**保存注意事项**：侧栏「角色包」保存时会更新编写器管理的 `meta` / slot 字段，同时保留未知 meta 字段、多实例 `slot_registry` 以及 `includes`、`groups`、`expert_overlay`、`runtime_config`、v4 `extensions` 和它们引用的安全载荷文件。v3 / dual-core 蓝图当前不进入编写器编辑流程；v2 会原版本往返，Stable v4 是新包默认。
 
 **专家路由配置**：请在 **A.I.Live** 主应用配置（`blueprint/includes/expert_routing.json`）；本编写器不编辑该文件。详见 [creator-docs/ROLE_PACK_EDITOR.md](./creator-docs/ROLE_PACK_EDITOR.md)。
 
@@ -24,21 +24,21 @@
 
 | 项目 | 说明 |
 |------|------|
-| **本仓库** | 产出 **`pipeline.ocblueprint`**（v2 SSOT）、`core_personality.txt`、可选只读 **`memory_seed.json`**、**`user_identities/*.md`**、**`knowledge/**/*.md`**（多文件世界观）、占位场景、`assets/images/` 情绪图等；可选 **`prompts/reply_quality_anchor.md`**、**`creator_message.txt`**（创作者公告；**oclivenewnew 运行时一般不读取**，仅部分归档工具展示） |
+| **本仓库** | 产出 **`pipeline.ocblueprint`**（新包 Stable v4；v2 兼容）、`core_personality.txt`、可选只读 **`memory_seed.json`**、**`user_identities/*.md`**、**`knowledge/**/*.md`**（多文件世界观）、占位场景、`assets/images/` 情绪图等；可选 **`prompts/reply_quality_anchor.md`**、**`creator_message.txt`**（创作者公告；**oclivenewnew 运行时一般不读取**，仅部分归档工具展示） |
 | **oclivenewnew** | 加载、校验与对话；契约原文在其仓库 **`creator-docs/`** 与 **`roles/README_MANIFEST.md`** |
 
 ## 与「插件市场 / 模块条目 / Profile（特征码）」的边界
 
-编写器只负责**角色包内容**（v2 蓝图 / 知识 / 素材 / 导出），不负责插件市场与一键部署。
+编写器只负责**角色包内容与蓝图编辑**（Stable v4 / v2 兼容、知识、素材、导出），不负责插件市场与一键部署。
 
 - **插件市场条目（`type: "plugin" | "module" | "profile"`）**：由 `oclivenewnew` 的「插件与后端管理」负责同步索引、安装依赖插件、权限确认与应用后端覆盖。
 - **Profile（特征码/一键部署）**：属于运行时侧的「环境配置 + 依赖声明」能力；编写器不解析/不应用 Profile，只在角色包里提供 `plugin_backends` 等字段供运行时读取。
 
 **性格档案**：本编写器编辑包内 **核心性格档案**（`core_personality.txt`）与 **`evolution`**（含 **`personality_source`**、`max_change_per_event`）。若选用 **`profile`**，运行时的 **可变性格档案**由 oclive 在数据库中维护，**不可**在包内手写；设计说明见 oclivenewnew **[personality-archive-notes.md](https://github.com/linkaiheng2233-cyber/oclivenewnew/blob/main/docs/personality-archive-notes.md)**，思路变化见 **[design-axis-evolution.md](https://github.com/linkaiheng2233-cyber/oclivenewnew/blob/main/docs/design-axis-evolution.md)**。
 
-**版本对齐**：`src/lib/hostRuntimeVersion.ts` 中的 **`HOST_RUNTIME_VERSION`** 应与 **oclivenewnew** `distros/desktop-tauri/Cargo.toml` 的 **`version`** 一致；导出前校验会检查 **`meta.min_runtime_version`** 与 v2 蓝图契约（见 [PACK_VERSIONING.md](https://github.com/linkaiheng2233-cyber/oclivenewnew/blob/main/creator-docs/role-pack/PACK_VERSIONING.md)）。
+**版本对齐**：`src/lib/hostRuntimeVersion.ts` 中的 **`HOST_RUNTIME_VERSION`** 应与 **oclivenewnew** `distros/desktop-tauri/Cargo.toml` 的 **`version`** 一致；导出前校验会检查 **`meta.min_runtime_version`** 并按 schema 精确分派 v2 / v3 / v4 蓝图契约（见 [PACK_VERSIONING.md](https://github.com/linkaiheng2233-cyber/oclivenewnew/blob/main/creator-docs/role-pack/PACK_VERSIONING.md)）。
 
-桌面版可从开始页选择 **roles 根**，加载其中的 v2 角色包，再通过同一套简单/高级创作界面修改；写回统一经过导出预检，不再保留旧的第二套磁盘编辑面板。
+桌面版可从开始页选择 **roles 根**，加载其中的 v2 / Stable v4 角色包，再通过同一套简单/高级创作界面修改；写回统一经过导出预检，不再保留旧的第二套磁盘编辑面板。
 
 编写器只负责创作与静态校验。对话、角色反馈和插件进程执行属于运行时边界；请把导出的角色包放入 A.I.Live 后进行动态联调。
 
@@ -101,7 +101,7 @@ npm run dev:browser  # 仅浏览器：Vite + 自动打开浏览器
 npm run dev          # 仅启动 Vite（不自动开浏览器；供 Tauri 子进程或手动打开 http://localhost:5173）
 ```
 
-1. 可选 **「运行全部检查」** 查看 v2 蓝图契约一致性。  
+1. 可选 **「运行全部检查」** 查看 Stable v4 / v2 兼容蓝图契约一致性。
 2. 勾选 **「导出前校验包内容」**（默认开启）：关闭后可在未通过检查时仍导出 zip 或写入文件夹，便于半成品或插件扩展包到 oclive 中实测。  
 3. **导出** `.ocpak` / `.zip`（浏览器下载到本机任意位置），或使用 **「写入文件夹（自选 roles 根目录）」**（Tauri 或支持 File System Access 的 Chromium）。  
 4. 将解压或写入得到的 **`{roleId}/`** 文件夹放进运行时的 **roles 根**（与 zip 内结构一致：**不要**多套一层目录）。  
@@ -134,7 +134,7 @@ npm run tauri:build  # 生产安装包 / 可执行文件（需完整 Rust + 平�
 | `npm run dev` | 仅起 Vite（无 `--open`；`tauri dev` 的前置命令与此相同，避免双开浏览器） |
 | `npm run dev:browser` | 浏览器开发 + 自动打开 `localhost:5173` |
 | `npm run build` | 生产构建（`dist/`，供 Tauri `distDir` 使用） |
-| `npm test` | Vitest（**186** 项：导入/导出 roundtrip、记忆与身份模板、路径安全、v2 校验与包检查） |
+| `npm test` | Vitest（导入/导出 roundtrip、记忆与身份模板、路径安全、Stable v4 / v2 兼容校验与包检查） |
 | `npm run test:e2e` | Playwright 冒烟（需先 `npm run build`；首次可执行 `npm run test:e2e:install` 安装浏览器） |
 | `npm run tauri:dev` | Tauri 开发窗口 |
 | `npm run tauri:build` | Tauri 打包（安装包 / 可执行文件） |

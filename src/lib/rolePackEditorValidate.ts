@@ -122,7 +122,11 @@ export type RolePackEditorValidateResult = {
   usedWasm: boolean
 }
 
-/** 桌面版优先走历史命名的 Tauri `validate_blueprint_v2_json` 命令；导出目录另走 v2/v3/v4 版本路由。 */
+/**
+ * Desktop editor-state baseline. The Tauri command keeps its historical v2
+ * name for IPC compatibility; final export-directory validation dispatches
+ * the exact v2/v3/v4 contract.
+ */
 export async function validateRolePackEditorState(
   manifestJson: string,
   settingsJson: string | null,

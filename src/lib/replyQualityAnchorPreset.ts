@@ -1,6 +1,8 @@
 /**
  * 编写器导出时可选并入 `prompts/reply_quality_anchor.md`（人类可读镜像）。
- * 运行时 SSOT：`pipeline.ocblueprint` → `meta.reply_quality_anchor`（空则内核默认）；导出双写 JSON + md。
+ * Stable v4 运行时 SSOT：`pipeline.ocblueprint` →
+ * `runtime_config.reply_quality_anchor`（v2 兼容 `meta`；空则内核默认）。
+ * Markdown 仅为人类可读镜像。
  */
 export const EDITOR_PACK_REPLY_QUALITY_ANCHOR = `【回复质量锚点】（每轮须遵守）
 - **禁止复述用户**：不得以复述、照搬、仅替换少量词的方式重复用户刚说的话（包括把用户整句改述后当作你的开场）；用**全新措辞**接内容或情绪。

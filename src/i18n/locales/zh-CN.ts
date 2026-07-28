@@ -42,7 +42,7 @@ export default {
       exe1: "只有桌面版编写器的「一键启动」才需要填这一项。",
       exe2:
         "请填 oclivenewnew.exe（或你的 oclive 程序）的完整路径。第一次会弹窗让你确认，避免误运行陌生程序。若你习惯自己在终端里已经运行了带 --api 的 oclive，可以不填，只要「检测连接」通过即可。",
-      rolePath1: "要试聊的角色包所在的文件夹，这一层里必须有 pipeline.ocblueprint（v2 角色包蓝图）。",
+      rolePath1: "要试聊的角色包所在的文件夹，这一层里必须有 pipeline.ocblueprint（支持 v2 / Stable v4，新包默认 v4）。",
       rolePath2:
         "通常是你在编写器里点「写入文件夹」后生成的「roles 根目录 / 角色 id」那一层。上面若已自动填好路径，一般不用改；也可以粘贴别的绝对路径来试别的包。",
       scene1: "和主应用里「场景」的意思一样：你想从哪个场景开始聊。",
@@ -589,7 +589,7 @@ export default {
   packChecks: {
     title: "角色包检查",
     desc:
-      "校验角色门面 / 运行时 JSON，并构建 v2 pipeline.ocblueprint 做契约检查。桌面版走与 pack validate 同源的 Tauri 校验；浏览器开发时回退 TypeScript。导出时可选校验，通过后即可把包放入 roles 测试。",
+      "校验角色门面 / 运行时 JSON，并构建 Stable v4 pipeline.ocblueprint 做契约检查。导入的 v2 会保持 v2。桌面版走与 pack validate 同源的 Tauri 校验；浏览器开发时回退 TypeScript。导出时可选校验，通过后即可把包放入 roles 测试。",
     status: {
       neverRan: "尚未运行检查；运行后将显示使用的校验方式（Tauri v2 蓝图校验或 TypeScript）。",
       lastRustWasm: "最近一次检查：Tauri v2 蓝图校验",
@@ -918,7 +918,7 @@ export default {
       errNoSelection: "请先在列表中选择要运行的测试文件。",
     },
     rolePack: {
-      lead: "打开磁盘上的 v2 角色包目录，编辑 pipeline.ocblueprint（表单拆分为角色门面 + 运行时视图），校验与 oclivenewnew 运行时一致。需桌面版 Tauri。",
+      lead: "打开磁盘上的 v2 / Stable v4 角色包目录，编辑 pipeline.ocblueprint（表单拆分为角色门面 + 运行时视图），校验与 oclivenewnew 运行时一致。新包默认 v4；需桌面版 Tauri。",
       openDir: "打开角色包目录…",
       save: "保存到磁盘",
       modeAria: "编辑模式",

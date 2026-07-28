@@ -1,10 +1,10 @@
 /**
- * 角色包编辑器侧校验：构建 v2 蓝图并与 oclive_validation BlueprintV2 profile 对齐。
+ * 角色包编辑器侧校验：构建 Stable v4 蓝图并与 oclive_validation 版本路由对齐。
  */
 
 import {
-  buildBlueprintV2FromLegacy,
-  validateBlueprintV2Typescript,
+  buildBlueprintFromLegacy,
+  validateBlueprintTypescript,
 } from './blueprintV2'
 import { validateEditorPack, validateMinRuntimeVersion, type ManifestInput, type SettingsInput } from './validation'
 import { invoke } from '@tauri-apps/api/core'
@@ -62,9 +62,9 @@ export function validateRolePackTypescript(
   const minErr = validateMinRuntimeVersion(mr.min_runtime_version, hostVersion)
   if (minErr) errors.push(minErr)
 
-  const bp = buildBlueprintV2FromLegacy(mr, settingsRecord)
+  const bp = buildBlueprintFromLegacy(mr, settingsRecord)
   const roleId = String(mr.id ?? bp.meta.id ?? '').trim()
-  errors.push(...validateBlueprintV2Typescript(bp, roleId || undefined))
+  errors.push(...validateBlueprintTypescript(bp, roleId || undefined))
 
   return errors
 }
@@ -122,7 +122,7 @@ export type RolePackEditorValidateResult = {
   usedWasm: boolean
 }
 
-/** 桌面版优先走 Tauri `validate_blueprint_v2_json`（与 pack validate 默认 profile 同源）。 */
+/** 桌面版优先走历史命名的 Tauri `validate_blueprint_v2_json` 命令；导出目录另走 v2/v3/v4 版本路由。 */
 export async function validateRolePackEditorState(
   manifestJson: string,
   settingsJson: string | null,

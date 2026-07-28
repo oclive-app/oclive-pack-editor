@@ -46,7 +46,7 @@ export default {
       exe1: "Only needed for the desktop editor’s “One-click start”.",
       exe2:
         "Fill the full path to oclivenewnew.exe (or your oclive program). The first time will ask for confirmation to avoid running unknown executables. If you already started oclive with --api in a terminal, you can leave it empty as long as “Check connection” works.",
-      rolePath1: "The folder of the role pack to try-chat. It must contain pipeline.ocblueprint (v2 role pack blueprint).",
+      rolePath1: "The role-pack folder to try-chat. It must contain pipeline.ocblueprint (v2 or Stable v4; new packs default to v4).",
       rolePath2:
         "Usually it’s the “roles root / role id” folder generated after clicking “Write to folder”. If it’s already auto-filled, you typically don’t need to change it. You can also paste another absolute path to test another pack.",
       scene1: "Same meaning as in the main app: which scene you want to start chatting from.",
@@ -608,7 +608,7 @@ export default {
   packChecks: {
     title: "Role pack checks",
     desc:
-      "Validate role-facing / runtime JSON and build v2 pipeline.ocblueprint for contract checks. Desktop uses Tauri validation aligned with pack validate; browser dev falls back to TypeScript. You can require checks before export; once passed, you can put the pack into roles for testing.",
+      "Validate role-facing / runtime JSON and build Stable v4 pipeline.ocblueprint for contract checks. Imported v2 packs remain v2. Desktop uses Tauri validation aligned with pack validate; browser dev falls back to TypeScript. You can require checks before export; once passed, you can put the pack into roles for testing.",
     status: {
       neverRan: "Checks have not been run yet. After running, we’ll show whether Tauri v2 blueprint validation or TypeScript was used.",
       lastRustWasm: "Last check: Tauri v2 blueprint validation",
@@ -949,7 +949,7 @@ export default {
       errNoSelection: "Pick a test file from the list first.",
     },
     rolePack: {
-      lead: "Open a v2 role pack directory on disk, edit pipeline.ocblueprint (form split into role meta + runtime views), and validate against oclivenewnew. Requires the desktop (Tauri) build.",
+      lead: "Open a v2 or Stable v4 role-pack directory, edit pipeline.ocblueprint (role meta + runtime views), and validate against oclivenewnew. New packs default to v4. Requires the desktop (Tauri) build.",
       openDir: "Open role pack folder…",
       save: "Save to disk",
       modeAria: "Edit mode",

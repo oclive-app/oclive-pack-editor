@@ -1,5 +1,8 @@
 /**
- * v2 角色包 SSOT：`pipeline.ocblueprint`（与 oclivenewnew `oclive_validation` 迁移逻辑对齐）。
+ * `pipeline.ocblueprint` editor contract.
+ *
+ * v4 is the Stable default. Imported v2 packs keep schema_version 2 on
+ * round-trip; frozen v3 remains intentionally non-editable.
  */
 
 export const PIPELINE_BLUEPRINT_FILENAME = 'pipeline.ocblueprint'
@@ -24,23 +27,37 @@ export type BlueprintExpertOverlay = {
   [key: string]: unknown
 }
 
-export type BlueprintV2 = {
-  schema_version: 2
+export type BlueprintExtensionDeclaration = {
+  capability: string
+  provider?: string
+  required?: boolean
+  config_schema_version: number
+  config_ref: string
+}
+
+export type BlueprintDocument = {
+  schema_version: 2 | 4
   meta: Record<string, unknown>
   slot_registry: Record<string, BlueprintSlotEntry>
   includes?: BlueprintIncludeEntry[]
   expert_overlay?: BlueprintExpertOverlay
   groups?: Record<string, BlueprintSlotGroupEntry>
   runtime_config?: Record<string, unknown>
+  extensions?: Record<string, BlueprintExtensionDeclaration>
 }
 
+/** @deprecated Use `BlueprintDocument`; kept for source compatibility. */
+export type BlueprintV2 = BlueprintDocument
+
 const EDITOR_PRESERVED_BLUEPRINT_KEYS = [
+  'schema_version',
   'meta',
   'slot_registry',
   'includes',
   'groups',
   'expert_overlay',
   'runtime_config',
+  'extensions',
 ] as const
 
 const EDITOR_MANAGED_META_KEYS = [
@@ -72,7 +89,7 @@ const EDITOR_MANAGED_META_KEYS = [
 ] as const
 
 export function pickEditorPreservedBlueprintFields(
-  blueprint: BlueprintV2,
+  blueprint: BlueprintDocument,
 ): Record<string, unknown> {
   const source = blueprint as unknown as Record<string, unknown>
   const result: Record<string, unknown> = {}
@@ -92,10 +109,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  * editable type receives backend/plugin changes from the simple editor.
  */
 export function mergeEditorPreservedBlueprintFields(
-  blueprint: BlueprintV2,
+  blueprint: BlueprintDocument,
   preserved?: Record<string, unknown>,
-): BlueprintV2 {
+): BlueprintDocument {
   if (!preserved) return blueprint
+
+  if (preserved.schema_version === 2 || preserved.schema_version === 4) {
+    blueprint.schema_version = preserved.schema_version
+  }
 
   if (isRecord(preserved.meta)) {
     const mergedMeta: Record<string, unknown> = { ...preserved.meta }
@@ -131,11 +152,20 @@ export function mergeEditorPreservedBlueprintFields(
     blueprint.slot_registry = merged
   }
 
-  for (const key of ['includes', 'groups', 'expert_overlay', 'runtime_config'] as const) {
+  for (const key of ['includes', 'groups', 'expert_overlay', 'extensions'] as const) {
     const value = preserved[key]
     if (value !== undefined && value !== null) {
       ;(blueprint as unknown as Record<string, unknown>)[key] = value
     }
+  }
+  if (isRecord(preserved.runtime_config) && !blueprint.runtime_config) {
+    blueprint.runtime_config = { ...preserved.runtime_config }
+  }
+  if (
+    blueprint.schema_version === 2
+    && !Object.prototype.hasOwnProperty.call(preserved, 'runtime_config')
+  ) {
+    delete blueprint.runtime_config
   }
   return blueprint
 }
@@ -160,6 +190,7 @@ const BLUEPRINT_ROOT_KEYS = new Set([
   'expert_overlay',
   'groups',
   'runtime_config',
+  'extensions',
 ])
 
 const SLOT_KEYS = new Set([
@@ -215,6 +246,13 @@ const RUNTIME_CONFIG_KEYS = new Set([
   'ollama_model',
   'remote_presence',
   'autonomous_scene',
+])
+const EXTENSION_KEYS = new Set([
+  'capability',
+  'provider',
+  'required',
+  'config_schema_version',
+  'config_ref',
 ])
 
 type PluginBackendsShape = {
@@ -320,11 +358,12 @@ function slotRegistryToPluginBackends(
   }
 }
 
-/** 从 legacy manifest + settings 构建 v2 蓝图（内存中，不写盘）。 */
-export function buildBlueprintV2FromLegacy(
+/** 从 legacy-shaped editor state 构建蓝图（新包默认 Stable v4）。 */
+export function buildBlueprintFromLegacy(
   manifest: Record<string, unknown>,
   settings: Record<string, unknown>,
-): BlueprintV2 {
+  schemaVersion: 2 | 4 = 4,
+): BlueprintDocument {
   const mergedManifest = { ...manifest }
   const model = settings.model ?? settings.ollama_model
   if (settings.ollama_model != null) mergedManifest.ollama_model = settings.ollama_model
@@ -376,19 +415,43 @@ export function buildBlueprintV2FromLegacy(
     pb.local_memory_provider_id = String(settings.local_memory_provider_id)
   }
 
+  const runtimeConfig: Record<string, unknown> = {}
+  for (const key of RUNTIME_CONFIG_KEYS) {
+    if (key === 'dual_core') continue
+    const value =
+      key === 'ollama_model'
+        ? settings.ollama_model ?? settings.model ?? mergedManifest.ollama_model
+        : settings[key]
+    if (value !== undefined && value !== null) runtimeConfig[key] = value
+  }
+
   return {
-    schema_version: 2,
+    schema_version: schemaVersion,
     meta,
     slot_registry: pluginBackendsToSlotRegistry(pb),
+    ...(schemaVersion === 4 && Object.keys(runtimeConfig).length
+      ? { runtime_config: runtimeConfig }
+      : {}),
   }
 }
 
-export function serializeBlueprintV2(bp: BlueprintV2): string {
+/** Explicit v2 builder retained for compatibility and v2 round-trip tests. */
+export function buildBlueprintV2FromLegacy(
+  manifest: Record<string, unknown>,
+  settings: Record<string, unknown>,
+): BlueprintDocument {
+  return buildBlueprintFromLegacy(manifest, settings, 2)
+}
+
+export function serializeBlueprint(bp: BlueprintDocument): string {
   return `${JSON.stringify(bp, null, 2)}\n`
 }
 
+/** @deprecated Use `serializeBlueprint`. */
+export const serializeBlueprintV2 = serializeBlueprint
+
 /** 将 v2 蓝图拆回编写器使用的 manifest/settings 形状（JSON 编辑器 / 表单）。 */
-export function blueprintToLegacyParts(bp: BlueprintV2): {
+export function blueprintToLegacyParts(bp: BlueprintDocument): {
   manifest: Record<string, unknown>
   settings: Record<string, unknown>
 } {
@@ -439,15 +502,17 @@ export function blueprintToLegacyParts(bp: BlueprintV2): {
   return { manifest, settings }
 }
 
-export function parseBlueprintV2Json(raw: string): BlueprintV2 {
-  const v = JSON.parse(raw) as BlueprintV2
-  if (v.schema_version !== 2) {
-    if (v.schema_version === 3) {
+export function parseBlueprintJson(raw: string): BlueprintDocument {
+  const v = JSON.parse(raw) as BlueprintDocument
+  if (v.schema_version !== 2 && v.schema_version !== 4) {
+    if ((v as { schema_version?: number }).schema_version === 3) {
       throw new Error(
-        '检测到 v3 / dual-core 蓝图；编写器当前仅支持 v2 编辑，请先在主程序完成 v3 集成配置。',
+        '检测到冻结的 v3 / dual-core Beta 蓝图；编写器仅编辑 v2 与 Stable v4。',
       )
     }
-    throw new Error(`pipeline.ocblueprint schema_version 须为 2（当前 ${v.schema_version}）`)
+    throw new Error(
+      `pipeline.ocblueprint schema_version 须为 2 或 4（当前 ${v.schema_version}）`,
+    )
   }
   if (!v.meta || typeof v.meta !== 'object') {
     throw new Error('pipeline.ocblueprint 缺少 meta')
@@ -458,11 +523,19 @@ export function parseBlueprintV2Json(raw: string): BlueprintV2 {
   return v
 }
 
-/** v2 蓝图最小校验（编写器 TS 兜底；完整校验走 wasm / pack validate）。 */
-export function validateBlueprintV2Typescript(bp: BlueprintV2, roleId?: string): string[] {
+/** @deprecated Use `parseBlueprintJson`. */
+export const parseBlueprintV2Json = parseBlueprintJson
+
+/** v2 / v4 蓝图最小校验（编写器 TS 兜底；完整校验走 Tauri / pack validate）。 */
+export function validateBlueprintTypescript(
+  bp: BlueprintDocument,
+  roleId?: string,
+): string[] {
   const errors: string[] = []
   const root = bp as unknown as Record<string, unknown>
-  if (bp.schema_version !== 2) errors.push(`schema_version 须为 2（当前 ${bp.schema_version}）`)
+  if (bp.schema_version !== 2 && bp.schema_version !== 4) {
+    errors.push(`schema_version 须为 2 或 4（当前 ${bp.schema_version}）`)
+  }
   for (const key of Object.keys(root)) {
     if (!BLUEPRINT_ROOT_KEYS.has(key)) errors.push(`pipeline.ocblueprint 含未知顶层字段「${key}」`)
   }
@@ -650,6 +723,9 @@ export function validateBlueprintV2Typescript(bp: BlueprintV2, roleId?: string):
       }
       const dualCore = bp.runtime_config.dual_core
       if (dualCore != null) {
+        if (bp.schema_version === 4) {
+          errors.push('runtime_config.dual_core 仅属于冻结 v3，Stable v4 不接受该字段')
+        }
         if (!isRecord(dualCore)) {
           errors.push('runtime_config.dual_core 须为对象')
         } else {
@@ -661,7 +737,76 @@ export function validateBlueprintV2Typescript(bp: BlueprintV2, roleId?: string):
     }
   }
 
+  if (bp.schema_version === 2 && bp.extensions != null) {
+    errors.push('extensions 仅属于 Stable v4，schema_version 2 不接受该字段')
+  }
+  if (bp.extensions != null && !isRecord(bp.extensions)) {
+    errors.push('extensions 须为对象')
+  }
+  for (const [instanceId, declaration] of Object.entries(
+    isRecord(bp.extensions) ? bp.extensions : {},
+  )) {
+    const label = `extensions[${instanceId}]`
+    if (!isNamespacedId(instanceId)) {
+      errors.push(`${label} 实例 id 须为至少两段的小写命名空间`)
+    }
+    if (!isRecord(declaration)) {
+      errors.push(`${label} 须为对象`)
+      continue
+    }
+    for (const key of Object.keys(declaration)) {
+      if (!EXTENSION_KEYS.has(key)) errors.push(`${label} 含未知字段「${key}」`)
+    }
+    if (!isNamespacedId(declaration.capability)) {
+      errors.push(`${label}.capability 须为至少两段的小写命名空间`)
+    }
+    if (declaration.provider != null && !isNamespacedId(declaration.provider)) {
+      errors.push(`${label}.provider 须为至少两段的小写命名空间`)
+    }
+    if (declaration.required != null && typeof declaration.required !== 'boolean') {
+      errors.push(`${label}.required 须为布尔值`)
+    }
+    if (
+      !Number.isInteger(declaration.config_schema_version)
+      || Number(declaration.config_schema_version) <= 0
+    ) {
+      errors.push(`${label}.config_schema_version 须为大于 0 的整数`)
+    }
+    const configRef =
+      typeof declaration.config_ref === 'string' ? declaration.config_ref.trim() : ''
+    const expectedPrefix = `blueprint/extensions/${instanceId}/`
+    if (
+      !isSafeBlueprintRelativePath(configRef)
+      || !configRef.endsWith('.json')
+      || !configRef.startsWith(expectedPrefix)
+    ) {
+      errors.push(`${label}.config_ref 须为 ${expectedPrefix} 下的安全 JSON 相对路径`)
+    }
+  }
+
   return errors
+}
+
+/** @deprecated Use `validateBlueprintTypescript`. */
+export const validateBlueprintV2Typescript = validateBlueprintTypescript
+
+function isNamespacedId(value: unknown): value is string {
+  return (
+    typeof value === 'string'
+    && value.length <= 160
+    && /^[a-z0-9_-]+(?:\.[a-z0-9_-]+)+$/.test(value)
+  )
+}
+
+function isSafeBlueprintRelativePath(value: string): boolean {
+  return (
+    value.length > 0
+    && !value.includes('\\')
+    && !value.startsWith('/')
+    && !value.includes('..')
+    && !value.includes('//')
+    && /^[A-Za-z0-9_./-]+$/.test(value)
+  )
 }
 
 export function isLegacyRolePackLayout(paths: string[]): boolean {
@@ -674,9 +819,9 @@ export function isV2RolePackLayout(paths: string[]): boolean {
   )
 }
 
-/** 测试与示例 zip 用的最小 v2 蓝图 JSON 文本。 */
+/** 测试与示例 zip 用的最小 Stable v4 蓝图 JSON 文本。 */
 export function minimalBlueprintJsonForRole(roleId: string, name = 'H'): string {
-  const bp = buildBlueprintV2FromLegacy(
+  const bp = buildBlueprintFromLegacy(
     {
       id: roleId,
       name,
@@ -686,5 +831,5 @@ export function minimalBlueprintJsonForRole(roleId: string, name = 'H'): string 
     },
     { schema_version: 1, plugin_backends: { llm: 'ollama' } },
   )
-  return serializeBlueprintV2(bp)
+  return serializeBlueprint(bp)
 }

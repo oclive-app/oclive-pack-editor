@@ -19,8 +19,9 @@ describe('buildRolePackFiles', () => {
     const bpRaw = files.get(`myrole/${PIPELINE_BLUEPRINT_FILENAME}`)
     expect(bpRaw).toBeDefined()
     expect(files.get('myrole/core_personality.txt')).toBeDefined()
-    const parsed = JSON.parse(bpRaw!) as { meta: { id: string } }
+    const parsed = JSON.parse(bpRaw!) as { schema_version: number; meta: { id: string } }
     expect(parsed.meta.id).toBe('myrole')
+    expect(parsed.schema_version).toBe(4)
   })
 
   it('includes scene placeholders for each manifest scene', () => {
@@ -124,6 +125,47 @@ describe('buildRolePackFiles', () => {
       },
     ])
     expect(blueprint.runtime_config).toEqual({ interaction_mode: 'pure_chat' })
+  })
+
+  it('keeps imported v2 as v2 and does not invent runtime_config', () => {
+    const files = buildRolePackFiles('x', baseManifest, { schema_version: 1 }, {
+      preservedBlueprintFields: {
+        schema_version: 2,
+      },
+    })
+    const blueprint = JSON.parse(files.get(`x/${PIPELINE_BLUEPRINT_FILENAME}`)!)
+    expect(blueprint.schema_version).toBe(2)
+    expect(blueprint.runtime_config).toBeUndefined()
+  })
+
+  it('roundtrips v4 extension declarations and their opaque payload file', async () => {
+    const extensionId = 'com.example.live2d'
+    const configRef = `blueprint/extensions/${extensionId}/config.json`
+    const blob = await buildRolePackZipBlob('x', baseManifest, { schema_version: 1 }, {
+      preservedBlueprintFields: {
+        schema_version: 4,
+        extensions: {
+          [extensionId]: {
+            capability: extensionId,
+            required: false,
+            config_schema_version: 7,
+            config_ref: configRef,
+          },
+        },
+      },
+      preservedFiles: [
+        {
+          relPath: configRef,
+          file: new File(['{"vendor_specific":{"gain":0.8}}'], 'config.json'),
+        },
+      ],
+    })
+    const zip = await (await import('jszip')).default.loadAsync(blob)
+    const blueprint = JSON.parse(
+      (await zip.file(`x/${PIPELINE_BLUEPRINT_FILENAME}`)?.async('string'))!,
+    )
+    expect(blueprint.extensions[extensionId].config_schema_version).toBe(7)
+    expect(await zip.file(`x/${configRef}`)?.async('string')).toContain('vendor_specific')
   })
 
   it('preserves multi-instance slots and unknown meta fields when rebuilding', () => {

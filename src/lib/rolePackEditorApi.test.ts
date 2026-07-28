@@ -3,6 +3,7 @@ import {
   catalogAssetsToFiles,
   invokeLoadRolePackForEditor,
   invokeListRolePacksUnderRolesRoot,
+  preservedPayloadsToFiles,
 } from './rolePackEditorApi'
 
 vi.mock('@tauri-apps/api/core', () => ({
@@ -42,5 +43,18 @@ describe('rolePackEditorApi (T05 tauri invoke mapping)', () => {
     expect(files).toHaveLength(1)
     expect(files[0]?.name).toBe('happy.png')
     expect(files[0]?.type).toBe('image/png')
+  })
+
+  it('preservedPayloadsToFiles retains the role-relative path', async () => {
+    const files = preservedPayloadsToFiles([
+      {
+        path: 'blueprint/extensions/com.example.live2d/config.json',
+        base64: btoa('{"opaque":true}'),
+      },
+    ])
+    expect(files[0]?.relPath).toBe(
+      'blueprint/extensions/com.example.live2d/config.json',
+    )
+    expect(await files[0]?.file.text()).toContain('opaque')
   })
 })

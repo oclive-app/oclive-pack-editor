@@ -98,4 +98,52 @@ describe('exportValidate', () => {
     expect(invalidMerged.ok).toBe(false)
     expect(invalidMerged.errors.some((error) => error.includes('openai_compatible'))).toBe(true)
   })
+
+  it('browser fallback validates v4 extension payload presence and JSON', async () => {
+    const manifest = JSON.parse(DEFAULT_MANIFEST_JSON) as Record<string, unknown>
+    const settings = JSON.parse(DEFAULT_SETTINGS_JSON) as Record<string, unknown>
+    const extensionId = 'com.example.live2d'
+    const configRef = `blueprint/extensions/${extensionId}/config.json`
+    const preservedBlueprintFields = {
+      schema_version: 4,
+      extensions: {
+        [extensionId]: {
+          capability: extensionId,
+          config_schema_version: 1,
+          config_ref: configRef,
+        },
+      },
+    }
+
+    const missing = await validateExportPackDirectory('demo', manifest, settings, {
+      preservedBlueprintFields,
+    })
+    expect(missing.ok).toBe(false)
+    expect(missing.errors.some((error) => error.includes('config_ref'))).toBe(true)
+
+    const malformed = await validateExportPackDirectory('demo', manifest, settings, {
+      preservedBlueprintFields,
+      preservedFiles: [
+        {
+          relPath: configRef,
+          file: new File(['{'], 'config.json', { type: 'application/json' }),
+        },
+      ],
+    })
+    expect(malformed.ok).toBe(false)
+    expect(malformed.errors.some((error) => error.includes('JSON 解析失败'))).toBe(true)
+
+    const valid = await validateExportPackDirectory('demo', manifest, settings, {
+      preservedBlueprintFields,
+      preservedFiles: [
+        {
+          relPath: configRef,
+          file: new File(['{"opaque":true}'], 'config.json', {
+            type: 'application/json',
+          }),
+        },
+      ],
+    })
+    expect(valid.ok).toBe(true)
+  })
 })

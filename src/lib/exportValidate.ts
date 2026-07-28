@@ -5,8 +5,8 @@ import { parseConfigJson } from './portraitCatalog'
 import { humanizeExportValidateErrors } from './exportErrorMessages'
 import {
   PIPELINE_BLUEPRINT_FILENAME,
-  parseBlueprintV2Json,
-  validateBlueprintV2Typescript,
+  parseBlueprintJson,
+  validateBlueprintTypescript,
 } from './blueprintV2'
 import { invoke } from '@tauri-apps/api/core'
 const PLACEHOLDER_BYTES = '\u0000'
@@ -100,7 +100,7 @@ export function appendAssetPlaceholdersForValidate(
   return out
 }
 
-/** Desktop: write export-shaped tree to temp dir and run `validate_role_pack_blueprint_v2_directory`. */
+/** Desktop: write export-shaped tree to temp dir and run version-dispatched role-pack validation. */
 export async function validateExportPackDirectory(
   roleId: string,
   manifest: ExportableManifest,
@@ -122,8 +122,8 @@ export async function validateExportPackDirectory(
 
   const blueprintPath = `${id}/${PIPELINE_BLUEPRINT_FILENAME}`
   try {
-    const blueprint = parseBlueprintV2Json(files.get(blueprintPath) ?? '')
-    const structuralErrors = validateBlueprintV2Typescript(blueprint, id)
+    const blueprint = parseBlueprintJson(files.get(blueprintPath) ?? '')
+    const structuralErrors = validateBlueprintTypescript(blueprint, id)
     const resolved = JSON.parse(JSON.stringify(blueprint)) as Record<string, unknown>
     delete resolved.includes
     for (const [index, include] of (blueprint.includes ?? []).entries()) {
@@ -146,10 +146,31 @@ export async function validateExportPackDirectory(
         structuralErrors.push(`includes[${index}] ${applyError}`)
       }
     }
+    if (blueprint.schema_version === 4) {
+      for (const [instanceId, declaration] of Object.entries(blueprint.extensions ?? {})) {
+        const configRef = declaration.config_ref.trim()
+        const configPath = `${id}/${configRef}`
+        const payloadRaw = files.get(configPath)
+        if (payloadRaw == null) {
+          structuralErrors.push(
+            `extensions[${instanceId}].config_ref 引用的文件未包含在导出结果中：${configRef}`,
+          )
+          continue
+        }
+        try {
+          JSON.parse(payloadRaw)
+        } catch (e) {
+          const message = e instanceof Error ? e.message : String(e)
+          structuralErrors.push(
+            `extensions[${instanceId}].config_ref JSON 解析失败（${configRef}）：${message}`,
+          )
+        }
+      }
+    }
     if (structuralErrors.length === 0) {
       structuralErrors.push(
-        ...validateBlueprintV2Typescript(
-          parseBlueprintV2Json(JSON.stringify(resolved)),
+        ...validateBlueprintTypescript(
+          parseBlueprintJson(JSON.stringify(resolved)),
           id,
         ),
       )

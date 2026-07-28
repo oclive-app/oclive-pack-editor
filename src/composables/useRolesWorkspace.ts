@@ -11,6 +11,7 @@ import {
   catalogAssetsToFiles,
   invokeListRolePacksUnderRolesRoot,
   invokeLoadRolePackForEditor,
+  preservedPayloadsToFiles,
   type RolePackListEntry,
 } from '../lib/rolePackEditorApi'
 import { parseJson } from '../lib/packChecks'
@@ -21,7 +22,7 @@ import {
 } from '../defaults'
 import { emptyAuthorRecRow } from '../lib/authorPack'
 import { parseSceneFromDisk, type SceneEditorEntry } from '../lib/scenePackUser'
-import { parseBlueprintV2Json, pickEditorPreservedBlueprintFields } from '../lib/blueprintV2'
+import { parseBlueprintJson, pickEditorPreservedBlueprintFields } from '../lib/blueprintV2'
 
 const ROLES_ROOT_KEY = 'oclive-pack-editor-roles-root'
 const LEGACY_LAST_ROLES_ROOT_KEY = 'oclive-pack-editor-last-roles-root'
@@ -188,6 +189,7 @@ export function useRolesWorkspace(applyTargets: ApplyLoadedPackTargets) {
       const authorJson = load.authorText ?? ''
       const blueprintRaw = load.blueprintText
       const catalogFiles = catalogAssetsToFiles(load.catalogAssets ?? [])
+      const preservedFiles = preservedPayloadsToFiles(load.preservedFiles ?? [])
 
       const sceneIds =
         load.mergedSceneIds?.length > 0 ? load.mergedSceneIds : ['home']
@@ -214,8 +216,9 @@ export function useRolesWorkspace(applyTargets: ApplyLoadedPackTargets) {
           userIdentityFiles: load.userIdentityFiles ?? [],
           userIdentitiesIndexJson: load.userIdentitiesIndexText ?? '',
           preservedBlueprintFields: blueprintRaw.trim()
-            ? pickEditorPreservedBlueprintFields(parseBlueprintV2Json(blueprintRaw))
+            ? pickEditorPreservedBlueprintFields(parseBlueprintJson(blueprintRaw))
             : {},
+          preservedFiles,
           portraitCatalogJson: load.portraitCatalogText ?? '',
           configJson: load.configText ?? '',
           adultExtensionJson: load.adultExtensionText ?? '',
@@ -232,7 +235,7 @@ export function useRolesWorkspace(applyTargets: ApplyLoadedPackTargets) {
 
       if (blueprintRaw.trim() && blueprintHasEditorExtensions(blueprintRaw)) {
         setWorkspaceFeedback(
-          `已加载「${role.displayName}」。包内 includes/groups 等扩展字段导出 rebuild 时可能被覆盖，请在 Chat Pro 架构图编辑。`,
+          `已加载「${role.displayName}」。包内 includes/groups/extensions 声明及其引用文件会无损保留；编写器当前只读这些扩展字段。`,
           false,
         )
       } else {

@@ -7,7 +7,7 @@
 ### Added
 
 - 高级创作支持独立编辑与校验 `memory_seed.json`、`user_identities/index.json` 和身份模板 Markdown。
-- zip / ocpak 导入再导出会透传路径安全的未知卫星文件，并保留蓝图扩展字段。
+- 新建角色包默认输出 Stable v4 蓝图；导入的 v2 继续按 v2 无损导出。zip / ocpak 与磁盘角色包会透传路径安全的未知卫星文件及 v4 `extensions` 外置 JSON 载荷，并保留编写器暂不编辑的蓝图扩展字段。
 
 ### Fixed
 

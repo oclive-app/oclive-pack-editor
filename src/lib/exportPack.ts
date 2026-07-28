@@ -7,11 +7,11 @@ import {
 import { mergedSceneIds, rolePackRelativePaths } from './packLayout'
 import { normalizeKnowledgePath, type KnowledgeMarkdownFile } from './knowledgeFiles'
 import {
-  buildBlueprintV2FromLegacy,
+  buildBlueprintFromLegacy,
   mergeEditorPreservedBlueprintFields,
   PIPELINE_BLUEPRINT_FILENAME,
   REPLY_QUALITY_ANCHOR_REL_PATH,
-  serializeBlueprintV2,
+  serializeBlueprint,
 } from './blueprintV2'
 import { mergeEditorReplyQualityAnchor } from './replyQualityAnchorPreset'
 import {
@@ -132,13 +132,13 @@ export function buildRolePackFiles(
     ''
 
   const blueprint = mergeEditorPreservedBlueprintFields(
-    buildBlueprintV2FromLegacy(m, settingsForBlueprint),
+    buildBlueprintFromLegacy(m, settingsForBlueprint),
     extra?.preservedBlueprintFields,
   )
   blueprint.meta.id = id
   const files = new Map<string, string>()
 
-  files.set(`${id}/${PIPELINE_BLUEPRINT_FILENAME}`, serializeBlueprintV2(blueprint))
+  files.set(`${id}/${PIPELINE_BLUEPRINT_FILENAME}`, serializeBlueprint(blueprint))
 
   const scenes = mergedSceneIds(m['scenes'] as string[] | undefined, [])
 

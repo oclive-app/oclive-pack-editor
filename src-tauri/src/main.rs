@@ -3,12 +3,11 @@
 use oclive_validation::blueprint_migrate::build_blueprint_v2_from_legacy_dir;
 use oclive_validation::blueprint_v2::{
     slot_registry_to_plugin_backends, validate_blueprint_v2_json_with_context,
-    validate_role_pack_blueprint_v2_directory, BlueprintV2ValidateContext, SlotRegistryEntry,
-    PIPELINE_BLUEPRINT_FILENAME,
+    BlueprintV2ValidateContext, SlotRegistryEntry, PIPELINE_BLUEPRINT_FILENAME,
 };
 use oclive_validation::disk_role_settings::DiskRoleSettings;
 use oclive_validation::manifest::DiskRoleManifest;
-use oclive_validation::merge_role_pack_scene_ids;
+use oclive_validation::{merge_role_pack_scene_ids, validate_role_pack_blueprint_directory};
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -18,7 +17,7 @@ struct PackFileEntry {
     content: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 struct BinaryFileEntry {
     path: String,
     base64: String,
@@ -237,6 +236,7 @@ struct RolePackEditorLoad {
     #[serde(skip_serializing_if = "Option::is_none")]
     portrait_catalog_text: Option<String>,
     catalog_assets: Vec<RolePackCatalogAsset>,
+    preserved_files: Vec<BinaryFileEntry>,
     #[serde(skip_serializing_if = "Option::is_none")]
     user_identities_index_text: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -268,6 +268,57 @@ fn is_safe_role_relative_path(rel: &str) -> bool {
         }
     }
     true
+}
+
+fn read_blueprint_referenced_files(
+    root: &std::path::Path,
+    blueprint: &serde_json::Value,
+) -> Vec<BinaryFileEntry> {
+    use base64::Engine;
+    use std::collections::BTreeSet;
+
+    let mut paths = BTreeSet::new();
+    if let Some(includes) = blueprint.get("includes").and_then(|value| value.as_array()) {
+        for include in includes {
+            if let Some(path) = include.get("path").and_then(|value| value.as_str()) {
+                paths.insert(path.to_string());
+            }
+        }
+    }
+    if let Some(extensions) = blueprint.get("extensions").and_then(|value| value.as_object()) {
+        for declaration in extensions.values() {
+            if let Some(path) = declaration
+                .get("config_ref")
+                .and_then(|value| value.as_str())
+            {
+                paths.insert(path.to_string());
+            }
+        }
+    }
+
+    let canonical_root = match root.canonicalize() {
+        Ok(path) => path,
+        Err(_) => return Vec::new(),
+    };
+    paths
+        .into_iter()
+        .filter(|path| is_safe_role_relative_path(path))
+        .filter_map(|path| {
+            let absolute = root.join(&path);
+            if !absolute.is_file() {
+                return None;
+            }
+            let canonical = absolute.canonicalize().ok()?;
+            if !canonical.starts_with(&canonical_root) {
+                return None;
+            }
+            let bytes = std::fs::read(canonical).ok()?;
+            Some(BinaryFileEntry {
+                path,
+                base64: base64::engine::general_purpose::STANDARD.encode(bytes),
+            })
+        })
+        .collect()
 }
 
 fn read_portrait_catalog_assets(
@@ -447,7 +498,7 @@ fn blueprint_to_legacy_parts(bp: &serde_json::Value) -> Result<(String, String),
     ))
 }
 
-/// 读取角色包根目录下的 v2 `pipeline.ocblueprint`，拆为编辑器 manifest/settings 视图。
+/// 读取角色包根目录下的 v2 / Stable v4 `pipeline.ocblueprint`，拆为编辑器 manifest/settings 视图。
 #[tauri::command]
 fn load_role_pack_for_editor(role_dir: String) -> Result<RolePackEditorLoad, String> {
     use std::fs;
@@ -462,6 +513,7 @@ fn load_role_pack_for_editor(role_dir: String) -> Result<RolePackEditorLoad, Str
         let blueprint_text = fs::read_to_string(&blueprint_path).map_err(|e| e.to_string())?;
         let bp: serde_json::Value =
             serde_json::from_str(&blueprint_text).map_err(|e| e.to_string())?;
+        let preserved_files = read_blueprint_referenced_files(&root, &bp);
         let (manifest_text, settings_text) = blueprint_to_legacy_parts(&bp)?;
         let anchor_path = root.join(REPLY_QUALITY_ANCHOR_REL);
         let mut settings_text = settings_text;
@@ -548,6 +600,7 @@ fn load_role_pack_for_editor(role_dir: String) -> Result<RolePackEditorLoad, Str
             adult_extension_text,
             portrait_catalog_text,
             catalog_assets,
+            preserved_files,
             user_identities_index_text,
             memory_seed_text,
             core_personality_text,
@@ -587,7 +640,7 @@ struct ValidateRolePackExportRequest {
     host_runtime_version: String,
 }
 
-/// Write export-shaped files to a temp role dir and run full `pack validate` (v2 directory profile).
+/// Write export-shaped files to a temp role dir and run full version-dispatched `pack validate`.
 #[tauri::command]
 fn validate_role_pack_export(
     role_id: String,
@@ -632,7 +685,7 @@ fn validate_role_pack_export(
 
     let host = req.host_runtime_version.trim();
     let host_version = if host.is_empty() { "0.3.0" } else { host };
-    let result = validate_role_pack_blueprint_v2_directory(&role_dir, host_version);
+    let result = validate_role_pack_blueprint_directory(&role_dir, host_version);
     let _ = std::fs::remove_dir_all(&root);
     result.map_err(|e| e.join("\n"))
 }

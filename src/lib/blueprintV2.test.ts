@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  buildBlueprintFromLegacy,
   buildBlueprintV2FromLegacy,
   blueprintToLegacyParts,
   minimalBlueprintJsonForRole,
@@ -72,6 +73,10 @@ describe('blueprint roundtrip', () => {
       /v3 \/ dual-core/,
     )
   })
+
+  it('accepts Stable v4 blueprints', () => {
+    expect(parseBlueprintV2Json(minimalBlueprintJsonForRole('hero')).schema_version).toBe(4)
+  })
 })
 
 describe('parseBlueprintV2Json', () => {
@@ -130,5 +135,49 @@ describe('validateBlueprintV2Typescript', () => {
     expect(errs.some((e) => e.includes('安全相对路径'))).toBe(true)
     expect(errs.some((e) => e.includes('target'))).toBe(true)
     expect(errs.some((e) => e.includes('引用未知'))).toBe(true)
+  })
+
+  it('validates the Stable v4 extension envelope and rejects v3-only fields', () => {
+    const bp = JSON.parse(minimalBlueprintJsonForRole('hero')) as ReturnType<
+      typeof buildBlueprintFromLegacy
+    >
+    bp.extensions = {
+      live2d: {
+        capability: 'Live2D',
+        config_schema_version: 0,
+        config_ref: '../outside.json',
+      },
+    }
+    bp.runtime_config = {
+      ...(bp.runtime_config ?? {}),
+      dual_core: { enabled: true },
+    }
+    const errs = validateBlueprintV2Typescript(bp, 'hero')
+    expect(errs.some((e) => e.includes('实例 id'))).toBe(true)
+    expect(errs.some((e) => e.includes('capability'))).toBe(true)
+    expect(errs.some((e) => e.includes('config_schema_version'))).toBe(true)
+    expect(errs.some((e) => e.includes('config_ref'))).toBe(true)
+    expect(errs.some((e) => e.includes('dual_core'))).toBe(true)
+  })
+})
+
+describe('buildBlueprintFromLegacy', () => {
+  it('builds Stable v4 and activates runtime_config by default', () => {
+    const bp = buildBlueprintFromLegacy(
+      {
+        id: 'hero',
+        name: 'Hero',
+        version: '1.0.0',
+        user_relations: { friend: { favor_multiplier: 1, initial_favorability: 50 } },
+        default_relation: 'friend',
+      },
+      {
+        schema_version: 1,
+        interaction_mode: 'pure_chat',
+        plugin_backends: { llm: 'ollama' },
+      },
+    )
+    expect(bp.schema_version).toBe(4)
+    expect(bp.runtime_config?.interaction_mode).toBe('pure_chat')
   })
 })

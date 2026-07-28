@@ -20,6 +20,7 @@ export type RolePackEditorLoadPayload = {
   adultExtensionText?: string
   portraitCatalogText?: string
   catalogAssets?: RolePackCatalogAssetPayload[]
+  preservedFiles?: Array<{ path: string; base64: string }>
   userIdentitiesIndexText?: string
   memorySeedText?: string
   corePersonalityText?: string
@@ -62,4 +63,21 @@ export async function invokeListRolePacksUnderRolesRoot(
 
 export async function invokeLoadRolePackForEditor(roleDir: string): Promise<RolePackEditorLoadPayload> {
   return invoke<RolePackEditorLoadPayload>('load_role_pack_for_editor', { roleDir })
+}
+
+export function preservedPayloadsToFiles(
+  files: Array<{ path: string; base64: string }>,
+): Array<{ relPath: string; file: File }> {
+  return files.map(({ path, base64 }) => {
+    const binary = atob(base64)
+    const bytes = new Uint8Array(binary.length)
+    for (let index = 0; index < binary.length; index++) {
+      bytes[index] = binary.charCodeAt(index)
+    }
+    const fileName = path.split('/').pop() || 'payload.json'
+    return {
+      relPath: path,
+      file: new File([bytes], fileName, { type: 'application/octet-stream' }),
+    }
+  })
 }

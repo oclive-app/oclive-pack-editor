@@ -16,7 +16,7 @@ import {
   blueprintToLegacyParts,
   isLegacyRolePackLayout,
   isV2RolePackLayout,
-  parseBlueprintV2Json,
+  parseBlueprintJson,
   pickEditorPreservedBlueprintFields,
   PIPELINE_BLUEPRINT_FILENAME,
   REPLY_QUALITY_ANCHOR_REL_PATH,
@@ -87,7 +87,7 @@ function isSafeAssetImageEntry(path: string, roleId: string, prefix: string): bo
   return true
 }
 
-/** 解析 zip：优先 v2 `pipeline.ocblueprint`；legacy manifest 需迁移。 */
+/** 解析 zip：优先 v2 / Stable v4 `pipeline.ocblueprint`；legacy manifest 需迁移。 */
 export async function importRolePackFromZip(file: File): Promise<ImportedRolePack> {
   const zip = await JSZip.loadAsync(file)
   const names = Object.keys(zip.files).filter((n) => !zip.files[n].dir)
@@ -95,7 +95,7 @@ export async function importRolePackFromZip(file: File): Promise<ImportedRolePac
 
   if (isLegacyRolePackLayout(normNames) && !isV2RolePackLayout(normNames)) {
     throw new Error(
-      '压缩包为 legacy manifest.json 格式。请先用 oclive pack migrate-to-blueprint 迁移，或在编写器重新导出 v2 蓝图包。',
+      '压缩包为 legacy manifest.json 格式。请先用 oclive pack migrate-to-blueprint 迁移，或在编写器重新导出蓝图包。',
     )
   }
 
@@ -129,7 +129,7 @@ export async function importRolePackFromZip(file: File): Promise<ImportedRolePac
   const blueprintRaw = await readText(PIPELINE_BLUEPRINT_FILENAME)
   if (!blueprintRaw.trim()) throw new Error('pipeline.ocblueprint 为空')
 
-  const bp = parseBlueprintV2Json(blueprintRaw)
+  const bp = parseBlueprintJson(blueprintRaw)
   const preservedBlueprintFields = pickEditorPreservedBlueprintFields(bp)
   const { manifest, settings } = blueprintToLegacyParts(bp)
   const anchorFromMeta =

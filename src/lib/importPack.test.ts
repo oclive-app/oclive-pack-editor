@@ -38,7 +38,7 @@ describe('importedPackBrainHint', () => {
 })
 
 describe('importRolePackFromZip', () => {
-  it('imports minimal valid v2 pack', async () => {
+  it('imports minimal valid Stable v4 pack', async () => {
     const z = new JSZip()
     z.file(`hero/${PIPELINE_BLUEPRINT_FILENAME}`, minimalBlueprintJsonForRole('hero'))
     z.file('hero/core_personality.txt', 'hello')
@@ -49,6 +49,7 @@ describe('importRolePackFromZip', () => {
     expect(r.corePersonality).toContain('hello')
     expect(r.emotionImageFiles).toHaveLength(0)
     expect(r.creatorMessage).toBe('')
+    expect(r.preservedBlueprintFields?.schema_version).toBe(4)
   })
 
   it('rejects legacy manifest-only zip', async () => {
@@ -117,6 +118,37 @@ describe('importRolePackFromZip', () => {
       'voice_profile.json',
       'blueprint/includes/personality.json',
     ])
+  })
+
+  it('preserves an imported v2 schema version without upgrading it', async () => {
+    const z = new JSZip()
+    const blueprint = JSON.parse(minimalBlueprintJsonForRole('hero'))
+    blueprint.schema_version = 2
+    delete blueprint.runtime_config
+    z.file(`hero/${PIPELINE_BLUEPRINT_FILENAME}`, JSON.stringify(blueprint))
+    const result = await importRolePackFromZip(await zipToFile(z, 'v2.zip'))
+    expect(result.preservedBlueprintFields?.schema_version).toBe(2)
+  })
+
+  it('preserves v4 extension declarations and payload files', async () => {
+    const z = new JSZip()
+    const extensionId = 'com.example.live2d'
+    const configRef = `blueprint/extensions/${extensionId}/config.json`
+    const blueprint = JSON.parse(minimalBlueprintJsonForRole('hero'))
+    blueprint.extensions = {
+      [extensionId]: {
+        capability: extensionId,
+        config_schema_version: 1,
+        config_ref: configRef,
+      },
+    }
+    z.file(`hero/${PIPELINE_BLUEPRINT_FILENAME}`, JSON.stringify(blueprint))
+    z.file(`hero/${configRef}`, '{"opaque":true}')
+    const result = await importRolePackFromZip(await zipToFile(z, 'v4.zip'))
+    expect(
+      (result.preservedBlueprintFields?.extensions as Record<string, unknown>)[extensionId],
+    ).toBeDefined()
+    expect(result.preservedFiles?.map((file) => file.relPath)).toContain(configRef)
   })
 
   it('loads emotion images under assets/images', async () => {

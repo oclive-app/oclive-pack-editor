@@ -179,13 +179,14 @@ export function applyLoadedPackToEditor(input: ApplyLoadedPackInput, targets: Ap
   targets.syncFormsFromJson()
 }
 
-/** 检测 blueprint 是否含编写器不编辑的扩展字段（导出 rebuild 可能丢失）。 */
+/** 检测 blueprint 是否含编写器只读保留的扩展字段。 */
 export function blueprintHasEditorExtensions(blueprintJson: string): boolean {
   try {
     const bp = JSON.parse(blueprintJson) as Record<string, unknown>
     if (Array.isArray(bp.includes) && bp.includes.length > 0) return true
     if (bp.groups != null && typeof bp.groups === 'object') return true
     if (bp.expert_overlay != null) return true
+    if (bp.extensions != null && typeof bp.extensions === 'object') return true
   } catch {
     /* ignore */
   }

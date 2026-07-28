@@ -285,7 +285,10 @@ fn read_blueprint_referenced_files(
             }
         }
     }
-    if let Some(extensions) = blueprint.get("extensions").and_then(|value| value.as_object()) {
+    if let Some(extensions) = blueprint
+        .get("extensions")
+        .and_then(|value| value.as_object())
+    {
         for declaration in extensions.values() {
             if let Some(path) = declaration
                 .get("config_ref")

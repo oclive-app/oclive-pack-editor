@@ -13,6 +13,7 @@ import {
   type SceneEditorEntry,
 } from './scenePackUser'
 import {
+  blueprintReferencedFilePaths,
   blueprintToLegacyParts,
   isLegacyRolePackLayout,
   isV2RolePackLayout,
@@ -228,17 +229,29 @@ export async function importRolePackFromZip(file: File): Promise<ImportedRolePac
     'user_identities/index.json',
     REPLY_QUALITY_ANCHOR_REL_PATH,
   ])
+  for (const file of knowledgeMarkdownFiles) knownExact.add(file.path)
+  for (const file of userIdentityFiles) knownExact.add(file.path)
+  for (const scene of sceneEditorEntries) {
+    knownExact.add(`scenes/${scene.sceneId}/scene.json`)
+    knownExact.add(`scenes/${scene.sceneId}/description.txt`)
+  }
+  const referencedPaths = new Set(blueprintReferencedFilePaths(bp))
   const preservedFiles: RolePackBinaryFile[] = []
   for (const n of names) {
     const path = normalizeZipPath(n)
     if (!isSafePathUnderRole(path, roleId)) continue
     const rel = path.slice(`${roleId}/`.length)
+    if (knownExact.has(rel)) {
+      continue
+    }
     if (
-      knownExact.has(rel) ||
-      rel.startsWith('knowledge/') ||
-      rel.startsWith('assets/images/') ||
-      rel.startsWith('scenes/') ||
-      rel.startsWith('user_identities/')
+      !referencedPaths.has(rel)
+      && (
+        rel.startsWith('knowledge/')
+        || rel.startsWith('assets/images/')
+        || rel.startsWith('scenes/')
+        || rel.startsWith('user_identities/')
+      )
     ) {
       continue
     }

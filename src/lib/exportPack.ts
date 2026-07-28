@@ -27,6 +27,52 @@ export type ExportableSettings = Record<string, unknown>
 export type RolePackTextFile = { path: string; content: string }
 export type RolePackBinaryFile = { relPath: string; file: File }
 
+function normalizeSafeRoleRelativePath(path: string): string | null {
+  const rel = path.replace(/\\/g, '/').replace(/^\/+/, '')
+  if (!rel || rel.split('/').some((part) => !part || part === '.' || part === '..')) {
+    return null
+  }
+  return rel
+}
+
+/**
+ * Collect binary outputs with one collision policy for zip, browser-folder,
+ * Tauri-folder and export validation.
+ *
+ * Editor-managed text outputs and catalog assets win over stale preserved
+ * copies loaded from an existing pack.
+ */
+export function collectRolePackBinaryFilesForExport(
+  roleId: string,
+  managedPaths: Iterable<string>,
+  extra?: Partial<PackExtraFiles>,
+): RolePackBinaryFile[] {
+  const id = roleId.trim()
+  const prefix = `${id}/`
+  const seen = new Set<string>()
+  for (const path of managedPaths) {
+    const normalized = path.replace(/\\/g, '/').replace(/^\/+/, '')
+    const rel = normalized.startsWith(prefix) ? normalized.slice(prefix.length) : normalized
+    const safe = normalizeSafeRoleRelativePath(rel)
+    if (safe) seen.add(safe)
+  }
+
+  const catalog = extra?.catalogAssets?.length
+    ? extra.catalogAssets
+    : (extra?.emotionImages ?? []).map((file) => ({
+        relPath: `assets/images/${file.name}`,
+        file,
+      }))
+  const output: RolePackBinaryFile[] = []
+  for (const candidate of [...catalog, ...(extra?.preservedFiles ?? [])]) {
+    const relPath = normalizeSafeRoleRelativePath(candidate.relPath)
+    if (!relPath || seen.has(relPath)) continue
+    seen.add(relPath)
+    output.push({ relPath, file: candidate.file })
+  }
+  return output
+}
+
 const KNOWLEDGE_PLACEHOLDER = `在此目录放置世界观 Markdown（可选）。
 运行时契约见 oclivenewnew 仓库 creator-docs/role-pack/WORLDVIEW_KNOWLEDGE.md
 `
@@ -77,7 +123,7 @@ export type PackExtraFiles = {
   creatorMessage?: string
   /** unified：全文只取首条非空行；per_module：每行一条（多模块拼接时汇总展示） */
   creatorMessageMode?: CreatorMessageExportMode
-  /** 写入 prompts/reply_quality_anchor.md（人类可读镜像；运行时 SSOT 为 meta.reply_quality_anchor） */
+  /** 写入 prompts/reply_quality_anchor.md（人类可读镜像；v4 运行时 SSOT 为 runtime_config） */
   replyQualityAnchorMarkdown?: string
   /** 为 true 时若 settings 无锚点则写入编辑器默认锚点 */
   includeDefaultReplyQualityAnchor?: boolean
@@ -131,8 +177,10 @@ export function buildRolePackFiles(
     anchorFromSettings.trim() ||
     ''
 
+  const targetSchemaVersion =
+    extra?.preservedBlueprintFields?.schema_version === 2 ? 2 : 4
   const blueprint = mergeEditorPreservedBlueprintFields(
-    buildBlueprintFromLegacy(m, settingsForBlueprint),
+    buildBlueprintFromLegacy(m, settingsForBlueprint, targetSchemaVersion),
     extra?.preservedBlueprintFields,
   )
   blueprint.meta.id = id
@@ -259,23 +307,12 @@ export async function buildRolePackZipBlob(
     zip.file(path, content)
   }
   const id = roleId.trim()
-  const assets =
-    extra?.catalogAssets?.length
-      ? extra.catalogAssets
-      : (extra?.emotionImages ?? []).map((f) => ({
-          relPath: `assets/images/${f.name}`,
-          file: f,
-        }))
-  for (const { relPath, file } of assets) {
-    const buf = await file.arrayBuffer()
-    zip.file(`${id}/${relPath.replace(/\\/g, '/')}`, buf)
-  }
-  for (const { relPath, file } of extra?.preservedFiles ?? []) {
-    const rel = relPath.replace(/\\/g, '/').replace(/^\/+/, '')
-    if (!rel || rel.split('/').some((part) => !part || part === '.' || part === '..')) continue
-    const zipPath = `${id}/${rel}`
-    if (zip.file(zipPath)) continue
-    zip.file(zipPath, await file.arrayBuffer())
+  for (const { relPath, file } of collectRolePackBinaryFilesForExport(
+    id,
+    files.keys(),
+    extra,
+  )) {
+    zip.file(`${id}/${relPath}`, await file.arrayBuffer())
   }
   return zip.generateAsync({ type: 'blob' })
 }

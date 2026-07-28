@@ -159,10 +159,27 @@ describe('validateBlueprintV2Typescript', () => {
     expect(errs.some((e) => e.includes('config_ref'))).toBe(true)
     expect(errs.some((e) => e.includes('dual_core'))).toBe(true)
   })
+
+  it('rejects extension identifiers with outer whitespace', () => {
+    const bp = JSON.parse(minimalBlueprintJsonForRole('hero')) as ReturnType<
+      typeof buildBlueprintFromLegacy
+    >
+    bp.extensions = {
+      'com.example.live2d': {
+        capability: ' com.example.live2d ',
+        provider: 'com.example.live2d.runtime ',
+        config_schema_version: 1,
+        config_ref: 'blueprint/extensions/com.example.live2d/config.json',
+      },
+    }
+    const errors = validateBlueprintV2Typescript(bp, 'hero')
+    expect(errors.some((error) => error.includes('capability'))).toBe(true)
+    expect(errors.some((error) => error.includes('provider'))).toBe(true)
+  })
 })
 
 describe('buildBlueprintFromLegacy', () => {
-  it('builds Stable v4 and activates runtime_config by default', () => {
+  it('builds Stable v4 with runtime_config as the only runtime-field SSOT', () => {
     const bp = buildBlueprintFromLegacy(
       {
         id: 'hero',
@@ -174,10 +191,57 @@ describe('buildBlueprintFromLegacy', () => {
       {
         schema_version: 1,
         interaction_mode: 'pure_chat',
+        memory_config: { scene_weight_multiplier: 1.2 },
+        reply_quality_anchor: 'answer cleanly',
+        identity_binding: 'global',
+        evolution: { personality_source: 'profile', max_change_per_event: 0.1 },
+        model: 'qwen2.5:7b',
+        remote_presence: { default_enabled: true },
+        autonomous_scene: { enabled: false },
         plugin_backends: { llm: 'ollama' },
       },
     )
     expect(bp.schema_version).toBe(4)
     expect(bp.runtime_config?.interaction_mode).toBe('pure_chat')
+    expect(bp.runtime_config?.evolution).toEqual({
+      personality_source: 'profile',
+      max_change_per_event: 0.1,
+    })
+    for (const key of [
+      'interaction_mode',
+      'memory_config',
+      'reply_quality_anchor',
+      'identity_binding',
+      'evolution',
+      'ollama_model',
+      'remote_presence',
+      'autonomous_scene',
+    ]) {
+      expect(bp.meta[key]).toBeUndefined()
+      expect(bp.runtime_config?.[key]).toBeDefined()
+    }
+  })
+
+  it('keeps legacy runtime fields in meta for explicit v2 output', () => {
+    const bp = buildBlueprintV2FromLegacy(
+      {
+        id: 'hero',
+        name: 'Hero',
+        version: '1.0.0',
+        user_relations: { friend: { favor_multiplier: 1, initial_favorability: 50 } },
+        default_relation: 'friend',
+      },
+      {
+        interaction_mode: 'pure_chat',
+        evolution: { personality_source: 'profile' },
+        model: 'qwen2.5:7b',
+        plugin_backends: { llm: 'ollama' },
+      },
+    )
+    expect(bp.schema_version).toBe(2)
+    expect(bp.runtime_config).toBeUndefined()
+    expect(bp.meta.interaction_mode).toBe('pure_chat')
+    expect(bp.meta.evolution).toEqual({ personality_source: 'profile' })
+    expect(bp.meta.ollama_model).toBe('qwen2.5:7b')
   })
 })

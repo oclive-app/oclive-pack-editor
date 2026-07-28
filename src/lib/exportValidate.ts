@@ -1,4 +1,10 @@
-import { buildRolePackFiles, type ExportableManifest, type ExportableSettings, type PackExtraFiles } from './exportPack'
+import {
+  buildRolePackFiles,
+  collectRolePackBinaryFilesForExport,
+  type ExportableManifest,
+  type ExportableSettings,
+  type PackExtraFiles,
+} from './exportPack'
 import { HOST_RUNTIME_VERSION } from './hostRuntimeVersion'
 import { isTauriRuntime } from './exportFolder'
 import { parseConfigJson } from './portraitCatalog'
@@ -108,15 +114,15 @@ export async function validateExportPackDirectory(
   extra?: Partial<PackExtraFiles>,
 ): Promise<{ ok: boolean; errors: string[]; usedTauri: boolean }> {
   const id = roleId.trim()
+  const textFiles = buildRolePackFiles(id, { ...manifest, id }, settings, extra)
+  const binaryFiles = collectRolePackBinaryFilesForExport(id, textFiles.keys(), extra)
   const files = appendAssetPlaceholdersForValidate(
-    buildRolePackFiles(id, { ...manifest, id }, settings, extra),
+    textFiles,
     id,
     extra,
   )
-  for (const { relPath, file } of extra?.preservedFiles ?? []) {
-    const rel = relPath.replace(/\\/g, '/').replace(/^\/+/, '')
-    if (!rel || rel.split('/').some((part) => !part || part === '.' || part === '..')) continue
-    const key = `${id}/${rel}`
+  for (const { relPath, file } of binaryFiles) {
+    const key = `${id}/${relPath}`
     if (!files.has(key)) files.set(key, await file.text())
   }
 

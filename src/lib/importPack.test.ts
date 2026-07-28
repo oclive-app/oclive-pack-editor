@@ -120,6 +120,45 @@ describe('importRolePackFromZip', () => {
     ])
   })
 
+  it('preserves an include payload even when it lives in an editor-classified directory', async () => {
+    const zip = new JSZip()
+    const blueprint = JSON.parse(minimalBlueprintJsonForRole('hero'))
+    blueprint.includes = [
+      {
+        path: 'knowledge/patch.json',
+        target: 'meta.personality',
+        mode: 'merge',
+      },
+    ]
+    zip.file(`hero/${PIPELINE_BLUEPRINT_FILENAME}`, JSON.stringify(blueprint))
+    zip.file('hero/knowledge/patch.json', '{"warmth":0.9}')
+
+    const result = await importRolePackFromZip(await zipToFile(zip, 'include-in-knowledge.zip'))
+
+    expect(result.preservedFiles?.map((file) => file.relPath)).toContain(
+      'knowledge/patch.json',
+    )
+  })
+
+  it('does not duplicate a referenced file already owned by an editor field', async () => {
+    const zip = new JSZip()
+    const blueprint = JSON.parse(minimalBlueprintJsonForRole('hero'))
+    blueprint.includes = [
+      {
+        path: 'config.json',
+        target: 'meta.personality',
+        mode: 'merge',
+      },
+    ]
+    zip.file(`hero/${PIPELINE_BLUEPRINT_FILENAME}`, JSON.stringify(blueprint))
+    zip.file('hero/config.json', '{"memory":{"enabled":true}}')
+
+    const result = await importRolePackFromZip(await zipToFile(zip, 'managed-reference.zip'))
+
+    expect(result.configJson).toContain('"memory"')
+    expect(result.preservedFiles?.map((file) => file.relPath)).not.toContain('config.json')
+  })
+
   it('preserves an imported v2 schema version without upgrading it', async () => {
     const z = new JSZip()
     const blueprint = JSON.parse(minimalBlueprintJsonForRole('hero'))

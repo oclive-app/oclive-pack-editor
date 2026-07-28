@@ -13,7 +13,7 @@ const baseManifest = {
 }
 
 describe('buildRolePackFiles export parity', () => {
-  it('produces host-loadable file set with anchor dual-write and optional satellites', () => {
+  it('produces a host-loadable Stable v4 file set with an anchor mirror', () => {
     const config = '{"reply_post_processor":{"enabled":false}}\n'
     const uiIndex =
       '{"schema_version":1,"default_identity_id":"f","identities":{"f":{"display_name":"F","template_file":"f.md"}}}\n'
@@ -45,18 +45,20 @@ describe('buildRolePackFiles export parity', () => {
     const bp = JSON.parse(files.get(`parity_role/${PIPELINE_BLUEPRINT_FILENAME}`)!) as {
       meta: {
         id: string
-        reply_quality_anchor?: string
         featured?: boolean
         preset_order?: number
+      }
+      runtime_config?: {
+        reply_quality_anchor?: string
         interaction_mode?: string
       }
       slot_registry: Record<string, unknown>
     }
     expect(bp.meta.id).toBe('parity_role')
-    expect(bp.meta.reply_quality_anchor).toBe('pack anchor')
     expect(bp.meta.featured).toBe(true)
     expect(bp.meta.preset_order).toBe(4)
-    expect(bp.meta.interaction_mode).toBe('pure_chat')
+    expect(bp.runtime_config?.reply_quality_anchor).toBe('pack anchor')
+    expect(bp.runtime_config?.interaction_mode).toBe('pure_chat')
     expect(Object.keys(bp.slot_registry).length).toBeGreaterThan(0)
   })
 })

@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { confirm, open } from '@tauri-apps/plugin-dialog'
 import {
   buildRolePackFiles,
+  collectRolePackBinaryFilesForExport,
   type ExportableManifest,
   type ExportableSettings,
   type PackExtraFiles,
@@ -45,33 +46,18 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
   return btoa(binary)
 }
 
-function binaryFilesForExport(extra?: Partial<PackExtraFiles>) {
-  const catalog = extra?.catalogAssets?.length
-    ? extra.catalogAssets
-    : (extra?.emotionImages ?? []).map((f) => ({
-        relPath: `assets/images/${f.name}`,
-        file: f,
-      }))
-  const out: { relPath: string; file: File }[] = []
-  const seen = new Set<string>()
-  for (const item of [...catalog, ...(extra?.preservedFiles ?? [])]) {
-    const relPath = item.relPath.replace(/\\/g, '/').replace(/^\/+/, '')
-    const parts = relPath.split('/')
-    if (!relPath || parts.some((part) => !part || part === '.' || part === '..')) continue
-    if (seen.has(relPath)) continue
-    seen.add(relPath)
-    out.push({ relPath, file: item.file })
-  }
-  return out
-}
-
 async function binaryPayloadForCatalogAssets(
   roleId: string,
+  managedPaths: Iterable<string>,
   extra?: Partial<PackExtraFiles>,
 ): Promise<{ path: string; base64: string }[]> {
   const id = roleId.trim()
   const out: { path: string; base64: string }[] = []
-  for (const { relPath, file } of binaryFilesForExport(extra)) {
+  for (const { relPath, file } of collectRolePackBinaryFilesForExport(
+    id,
+    managedPaths,
+    extra,
+  )) {
     const buf = await file.arrayBuffer()
     out.push({
       path: `${id}/${relPath.replace(/\\/g, '/')}`,
@@ -104,7 +90,11 @@ export async function writePackToRolesRoot(
     await w.write(content)
     await w.close()
   }
-  for (const { relPath, file } of binaryFilesForExport(extra)) {
+  for (const { relPath, file } of collectRolePackBinaryFilesForExport(
+    id,
+    files.keys(),
+    extra,
+  )) {
     const rel = `${id}/${relPath.replace(/\\/g, '/')}`
     const parts = rel.split('/').filter(Boolean)
     let dir: FileSystemDirectoryHandle = rolesRoot
@@ -133,7 +123,7 @@ export async function writePackToRolesRootPath(
     rolesRoot: rolesRootPath,
     files: payload,
   })
-  const bins = await binaryPayloadForCatalogAssets(id, extra)
+  const bins = await binaryPayloadForCatalogAssets(id, files.keys(), extra)
   if (bins.length > 0) {
     await invoke('write_role_pack_binaries', {
       rolesRoot: rolesRootPath,

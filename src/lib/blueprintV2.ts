@@ -99,6 +99,34 @@ export function pickEditorPreservedBlueprintFields(
   return result
 }
 
+/**
+ * Return every safe role-relative payload path declared by the blueprint.
+ *
+ * Import/export callers use this as the single TypeScript contract for
+ * `includes[].path` and Stable v4 `extensions.*.config_ref`; the payload
+ * remains opaque to the editor.
+ */
+export function blueprintReferencedFilePaths(blueprint: BlueprintDocument): string[] {
+  const paths = new Set<string>()
+  for (const include of Array.isArray(blueprint.includes) ? blueprint.includes : []) {
+    if (typeof include?.path === 'string' && isSafeBlueprintRelativePath(include.path)) {
+      paths.add(include.path)
+    }
+  }
+  if (blueprint.schema_version === 4 && isRecord(blueprint.extensions)) {
+    for (const declaration of Object.values(blueprint.extensions)) {
+      if (
+        isRecord(declaration)
+        && typeof declaration.config_ref === 'string'
+        && isSafeBlueprintRelativePath(declaration.config_ref)
+      ) {
+        paths.add(declaration.config_ref)
+      }
+    }
+  }
+  return [...paths]
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value != null && typeof value === 'object' && !Array.isArray(value)
 }
@@ -364,10 +392,7 @@ export function buildBlueprintFromLegacy(
   settings: Record<string, unknown>,
   schemaVersion: 2 | 4 = 4,
 ): BlueprintDocument {
-  const mergedManifest = { ...manifest }
-  const model = settings.model ?? settings.ollama_model
-  if (settings.ollama_model != null) mergedManifest.ollama_model = settings.ollama_model
-  else if (model != null) mergedManifest.ollama_model = model
+  const model = settings.ollama_model ?? settings.model ?? manifest.ollama_model
 
   const personality = Array.isArray(manifest.default_personality)
     ? manifest.default_personality
@@ -383,31 +408,44 @@ export function buildBlueprintFromLegacy(
     relations: manifest.user_relations ?? manifest.relations,
     default_relation: manifest.default_relation,
     scenes: manifest.scenes,
-    evolution: manifest.evolution ?? settings.evolution,
-    memory_config: manifest.memory_config ?? settings.memory_config,
-    identity_binding: settings.identity_binding ?? manifest.identity_binding,
     dev_only: manifest.dev_only,
     knowledge: manifest.knowledge ?? settings.knowledge,
   }
 
-  if (mergedManifest.ollama_model != null && String(mergedManifest.ollama_model).trim()) {
-    meta.ollama_model = mergedManifest.ollama_model
-  }
   if (manifest.min_runtime_version != null) meta.min_runtime_version = manifest.min_runtime_version
   if (manifest.life_trajectory != null) meta.life_trajectory = manifest.life_trajectory
   if (manifest.life_schedule != null) meta.life_schedule = manifest.life_schedule
-  if (settings.interaction_mode != null) meta.interaction_mode = settings.interaction_mode
-  if (settings.remote_presence != null) meta.remote_presence = settings.remote_presence
-  if (settings.autonomous_scene != null) meta.autonomous_scene = settings.autonomous_scene
   const anchor =
     typeof settings.reply_quality_anchor === 'string'
       ? String(settings.reply_quality_anchor).trim()
-      : ''
-  if (anchor) meta.reply_quality_anchor = anchor
+      : typeof manifest.reply_quality_anchor === 'string'
+        ? String(manifest.reply_quality_anchor).trim()
+        : ''
   if (manifest.featured != null) meta.featured = manifest.featured
   if (manifest.preset_order != null) meta.preset_order = manifest.preset_order
   if (manifest.creator_message_to_downloader != null) {
     meta.creator_message_to_downloader = manifest.creator_message_to_downloader
+  }
+
+  const runtimeValues: Record<string, unknown> = {
+    interaction_mode: settings.interaction_mode ?? manifest.interaction_mode,
+    memory_config: settings.memory_config ?? manifest.memory_config,
+    reply_quality_anchor: anchor || undefined,
+    remote_fallback_to_builtin:
+      settings.remote_fallback_to_builtin ?? manifest.remote_fallback_to_builtin,
+    identity_binding: settings.identity_binding ?? manifest.identity_binding,
+    evolution: settings.evolution ?? manifest.evolution,
+    ollama_model: model,
+    remote_presence: settings.remote_presence ?? manifest.remote_presence,
+    autonomous_scene: settings.autonomous_scene ?? manifest.autonomous_scene,
+  }
+
+  if (schemaVersion === 2) {
+    for (const key of RUNTIME_CONFIG_KEYS) {
+      if (key === 'dual_core' || key === 'remote_fallback_to_builtin') continue
+      const value = runtimeValues[key]
+      if (value !== undefined && value !== null) meta[key] = value
+    }
   }
 
   const pb = (settings.plugin_backends ?? {}) as PluginBackendsShape
@@ -416,13 +454,12 @@ export function buildBlueprintFromLegacy(
   }
 
   const runtimeConfig: Record<string, unknown> = {}
-  for (const key of RUNTIME_CONFIG_KEYS) {
-    if (key === 'dual_core') continue
-    const value =
-      key === 'ollama_model'
-        ? settings.ollama_model ?? settings.model ?? mergedManifest.ollama_model
-        : settings[key]
-    if (value !== undefined && value !== null) runtimeConfig[key] = value
+  if (schemaVersion === 4) {
+    for (const key of RUNTIME_CONFIG_KEYS) {
+      if (key === 'dual_core') continue
+      const value = runtimeValues[key]
+      if (value !== undefined && value !== null) runtimeConfig[key] = value
+    }
   }
 
   return {

@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { PIPELINE_BLUEPRINT_FILENAME, REPLY_QUALITY_ANCHOR_REL_PATH } from './blueprintV2'
-import { buildRolePackFiles, buildRolePackZipBlob } from './exportPack'
+import {
+  buildRolePackFiles,
+  buildRolePackZipBlob,
+  collectRolePackBinaryFilesForExport,
+} from './exportPack'
 
 const baseManifest = {
   id: 'x',
@@ -58,7 +62,7 @@ describe('buildRolePackFiles', () => {
     expect(bp.meta.creator_message_to_downloader).toBe('感谢游玩')
   })
 
-  it('writes reply quality anchor to prompts path and meta.reply_quality_anchor', () => {
+  it('writes reply quality anchor to prompts path and Stable v4 runtime_config', () => {
     const files = buildRolePackFiles(
       'x',
       baseManifest,
@@ -68,8 +72,10 @@ describe('buildRolePackFiles', () => {
     expect(files.get(`x/${REPLY_QUALITY_ANCHOR_REL_PATH}`)).toBe('anchor text\n')
     const bp = JSON.parse(files.get(`x/${PIPELINE_BLUEPRINT_FILENAME}`)!) as {
       meta: { reply_quality_anchor?: string }
+      runtime_config?: { reply_quality_anchor?: string }
     }
-    expect(bp.meta.reply_quality_anchor).toBe('anchor text')
+    expect(bp.meta.reply_quality_anchor).toBeUndefined()
+    expect(bp.runtime_config?.reply_quality_anchor).toBe('anchor text')
   })
 
   it('writes config.json when extra is set', () => {
@@ -128,7 +134,11 @@ describe('buildRolePackFiles', () => {
   })
 
   it('keeps imported v2 as v2 and does not invent runtime_config', () => {
-    const files = buildRolePackFiles('x', baseManifest, { schema_version: 1 }, {
+    const files = buildRolePackFiles('x', baseManifest, {
+      schema_version: 1,
+      interaction_mode: 'pure_chat',
+      evolution: { personality_source: 'profile' },
+    }, {
       preservedBlueprintFields: {
         schema_version: 2,
       },
@@ -136,6 +146,8 @@ describe('buildRolePackFiles', () => {
     const blueprint = JSON.parse(files.get(`x/${PIPELINE_BLUEPRINT_FILENAME}`)!)
     expect(blueprint.schema_version).toBe(2)
     expect(blueprint.runtime_config).toBeUndefined()
+    expect(blueprint.meta.interaction_mode).toBe('pure_chat')
+    expect(blueprint.meta.evolution).toEqual({ personality_source: 'profile' })
   })
 
   it('roundtrips v4 extension declarations and their opaque payload file', async () => {
@@ -211,6 +223,27 @@ describe('buildRolePackFiles', () => {
     expect(await zip.file('x/voice_profile.json')?.async('string')).toBe('{"schema_version":1}')
     expect(zip.file('escape.txt')).toBeNull()
     expect(await zip.file('x/core_personality.txt')?.async('string')).not.toBe('must not overwrite')
+  })
+
+  it('uses one collision policy where editor-managed outputs win', () => {
+    const staleConfig = new File(['{"stale":true}'], 'config.json')
+    const extensionConfig = new File(['{"opaque":true}'], 'config.json')
+    const result = collectRolePackBinaryFilesForExport(
+      'x',
+      ['x/config.json', 'x/core_personality.txt'],
+      {
+        preservedFiles: [
+          { relPath: 'config.json', file: staleConfig },
+          {
+            relPath: 'blueprint/extensions/com.example.live2d/config.json',
+            file: extensionConfig,
+          },
+        ],
+      },
+    )
+    expect(result.map((file) => file.relPath)).toEqual([
+      'blueprint/extensions/com.example.live2d/config.json',
+    ])
   })
 
   it('writes featured and preset_order into blueprint meta', () => {

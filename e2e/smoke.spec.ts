@@ -7,12 +7,13 @@ test.describe('oclive-pack-editor smoke', () => {
     await expect(page.getByRole('heading', { level: 1, name: /开始|Start/i })).toBeVisible()
   })
 
-  test('侧栏三项与顶栏检查角色包按钮存在', async ({ page }) => {
+  test('侧栏四项与顶栏检查角色包按钮存在', async ({ page }) => {
     await page.goto('/')
     const rail = page.locator('.editor-rail')
     await expect(rail.getByRole('button', { name: /简单|Simple/i })).toBeVisible()
     await expect(rail.getByRole('button', { name: /高级|Advanced/i })).toBeVisible()
-    await expect(rail.getByRole('button')).toHaveCount(3)
+    await expect(rail.getByRole('button', { name: /成人|Adult/i })).toBeVisible()
+    await expect(rail.getByRole('button')).toHaveCount(4)
     await expect(page.getByRole('button', { name: /检查角色包|Check pack/i })).toBeVisible()
   })
 

@@ -23,6 +23,10 @@ export type RolePackEditorLoadPayload = {
   preservedFiles?: Array<{ path: string; base64: string }>
   userIdentitiesIndexText?: string
   memorySeedText?: string
+  voiceProfileText?: string
+  deepCapsuleText?: string
+  systemPromptText?: string
+  polishPromptText?: string
   corePersonalityText?: string
   creatorMessageText?: string
   uiText?: string
@@ -59,6 +63,14 @@ export async function invokeListRolePacksUnderRolesRoot(
   rolesRoot: string,
 ): Promise<RolePackListEntry[]> {
   return invoke<RolePackListEntry[]>('list_role_packs_under_roles_root', { rolesRoot })
+}
+
+export async function invokeFindRolesRootForEditor(rolesRoot: string): Promise<string> {
+  return invoke<string>('find_roles_root_for_editor', { rolesRoot })
+}
+
+export async function invokeGuessDefaultRolesRoot(): Promise<string | null> {
+  return invoke<string | null>('guess_default_roles_root')
 }
 
 export async function invokeLoadRolePackForEditor(roleDir: string): Promise<RolePackEditorLoadPayload> {

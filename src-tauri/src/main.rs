@@ -106,16 +106,49 @@ fn read_display_name_from_blueprint(path: &std::path::Path) -> Option<String> {
     bp.get("meta")?.get("name")?.as_str().map(str::to_string)
 }
 
+/// Accept the exact roles root as well as the common parent directories users
+/// naturally pick in the folder dialog. Selecting a role pack itself resolves
+/// back to its containing roles root.
+fn find_roles_root_from_selection(
+    selection: &std::path::Path,
+) -> Result<std::path::PathBuf, String> {
+    if !selection.is_dir() {
+        return Err("所选路径不是目录".into());
+    }
+
+    if selection.join(PIPELINE_BLUEPRINT_FILENAME).is_file()
+        || selection.join("manifest.json").is_file()
+    {
+        let parent = selection
+            .parent()
+            .ok_or_else(|| "无法确定该角色包所属的 roles 目录".to_string())?;
+        return parent.canonicalize().map_err(|e| e.to_string());
+    }
+
+    let candidates = [
+        selection.join("distros").join("chat-pro").join("roles"),
+        selection.join("chat-pro").join("roles"),
+        selection.join("roles"),
+    ];
+    if let Some(root) = candidates.into_iter().find(|candidate| candidate.is_dir()) {
+        return root.canonicalize().map_err(|e| e.to_string());
+    }
+
+    selection.canonicalize().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn find_roles_root_for_editor(roles_root: String) -> Result<String, String> {
+    let root = find_roles_root_from_selection(std::path::Path::new(roles_root.trim()))?;
+    Ok(root.to_string_lossy().to_string())
+}
+
 /// 扫描 roles 根下一级子目录，纳入含 v2 蓝图的角色包；legacy manifest 标记需迁移。
 #[tauri::command]
 fn list_role_packs_under_roles_root(roles_root: String) -> Result<Vec<RolePackListEntry>, String> {
     use std::fs;
-    use std::path::PathBuf;
 
-    let root = PathBuf::from(roles_root.trim());
-    if !root.is_dir() {
-        return Err("所选路径不是目录".into());
-    }
+    let root = find_roles_root_from_selection(std::path::Path::new(roles_root.trim()))?;
 
     let mut out = Vec::new();
     for entry in fs::read_dir(&root).map_err(|e| e.to_string())? {
@@ -158,18 +191,44 @@ fn list_role_packs_under_roles_root(roles_root: String) -> Result<Vec<RolePackLi
     Ok(out)
 }
 
-/// 首次启动时猜测默认 roles 根（显式 OCLIVE_ROLES_DIR 优先）。
+fn first_existing_roles_root<I>(candidates: I) -> Option<String>
+where
+    I: IntoIterator<Item = std::path::PathBuf>,
+{
+    candidates.into_iter().find_map(|candidate| {
+        candidate
+            .is_dir()
+            .then(|| candidate.canonicalize().ok())
+            .flatten()
+            .map(|path| path.to_string_lossy().to_string())
+    })
+}
+
+fn standard_roles_candidates(base: &std::path::Path) -> Vec<std::path::PathBuf> {
+    let mut candidates = Vec::new();
+    for ancestor in base.ancestors().take(4) {
+        candidates.extend([
+            ancestor.join("roles"),
+            ancestor.join("distros").join("chat-pro").join("roles"),
+            ancestor
+                .join("oclivenewnew")
+                .join("distros")
+                .join("chat-pro")
+                .join("roles"),
+        ]);
+    }
+    candidates
+}
+
+/// 首次启动或用户主动扫描时猜测默认 roles 根（显式环境变量优先）。
+/// 只检查有限的标准发行布局，不递归遍历磁盘，避免误扫用户目录。
 #[tauri::command]
 fn guess_default_roles_root() -> Option<String> {
     use std::path::PathBuf;
 
     if let Ok(roles_root) = std::env::var("OCLIVE_ROLES_DIR") {
-        let roles = PathBuf::from(roles_root.trim());
-        if roles.is_dir() {
-            return roles
-                .canonicalize()
-                .ok()
-                .map(|p| p.to_string_lossy().to_string());
+        if let Some(root) = first_existing_roles_root([PathBuf::from(roles_root.trim())]) {
+            return Some(root);
         }
     }
     if let Ok(monorepo) = std::env::var("OCLIVE_MONOREPO") {
@@ -177,25 +236,22 @@ fn guess_default_roles_root() -> Option<String> {
             .join("distros")
             .join("chat-pro")
             .join("roles");
-        if roles.is_dir() {
-            return roles
-                .canonicalize()
-                .ok()
-                .map(|p| p.to_string_lossy().to_string());
+        if let Some(root) = first_existing_roles_root([roles]) {
+            return Some(root);
         }
     }
-    let sibling = PathBuf::from("..")
-        .join("oclivenewnew")
-        .join("distros")
-        .join("chat-pro")
-        .join("roles");
-    if sibling.is_dir() {
-        return sibling
-            .canonicalize()
-            .ok()
-            .map(|p| p.to_string_lossy().to_string());
+
+    let mut candidates = Vec::new();
+    if let Ok(cwd) = std::env::current_dir() {
+        candidates.extend(standard_roles_candidates(&cwd));
     }
-    None
+    if let Ok(executable) = std::env::current_exe() {
+        if let Some(executable_dir) = executable.parent() {
+            candidates.extend(standard_roles_candidates(executable_dir));
+        }
+    }
+
+    first_existing_roles_root(candidates)
 }
 
 #[derive(Serialize)]
@@ -242,6 +298,14 @@ struct RolePackEditorLoad {
     #[serde(skip_serializing_if = "Option::is_none")]
     memory_seed_text: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    voice_profile_text: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    deep_capsule_text: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    system_prompt_text: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    polish_prompt_text: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     core_personality_text: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     creator_message_text: Option<String>,
@@ -252,6 +316,16 @@ struct RolePackEditorLoad {
     user_identity_files: Vec<RolePackTextFile>,
     merged_scene_ids: Vec<String>,
     scene_files: Vec<RolePackSceneFile>,
+}
+
+fn read_optional_role_text(
+    root: &std::path::Path,
+    relative_path: &str,
+) -> Result<Option<String>, String> {
+    let path = root.join(relative_path);
+    path.is_file()
+        .then(|| std::fs::read_to_string(&path).map_err(|error| error.to_string()))
+        .transpose()
 }
 
 fn is_safe_role_relative_path(rel: &str) -> bool {
@@ -583,6 +657,10 @@ fn load_role_pack_for_editor(role_dir: String) -> Result<RolePackEditorLoad, Str
             .is_file()
             .then(|| fs::read_to_string(&memory_seed_path).map_err(|e| e.to_string()))
             .transpose()?;
+        let voice_profile_text = read_optional_role_text(&root, "voice_profile.json")?;
+        let polish_prompt_text = read_optional_role_text(&root, "polish_prompt.md")?;
+        let deep_capsule_text = read_optional_role_text(&root, "prompts/deep_capsule.txt")?;
+        let system_prompt_text = read_optional_role_text(&root, "prompts/system.md")?;
         let read_optional_root_text = |name: &str| -> Result<Option<String>, String> {
             let path = root.join(name);
             path.is_file()
@@ -606,6 +684,10 @@ fn load_role_pack_for_editor(role_dir: String) -> Result<RolePackEditorLoad, Str
             preserved_files,
             user_identities_index_text,
             memory_seed_text,
+            voice_profile_text,
+            deep_capsule_text,
+            system_prompt_text,
+            polish_prompt_text,
             core_personality_text,
             creator_message_text,
             ui_text,
@@ -760,6 +842,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             write_role_pack_files,
             write_role_pack_binaries,
+            find_roles_root_for_editor,
             list_role_packs_under_roles_root,
             guess_default_roles_root,
             load_role_pack_for_editor,
@@ -803,6 +886,74 @@ mod role_pack_command_tests {
     }
 
     #[test]
+    fn roles_root_selection_accepts_project_chat_pro_and_role_directories() {
+        use super::{
+            find_roles_root_from_selection, list_role_packs_under_roles_root,
+            PIPELINE_BLUEPRINT_FILENAME,
+        };
+        use std::fs;
+
+        let project =
+            std::env::temp_dir().join(format!("oclive-pe-root-selection-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&project);
+        let chat_pro = project.join("distros").join("chat-pro");
+        let roles = chat_pro.join("roles");
+        let role = roles.join("demo");
+        fs::create_dir_all(&role).unwrap();
+        fs::write(role.join(PIPELINE_BLUEPRINT_FILENAME), "{}").unwrap();
+        let expected = roles.canonicalize().unwrap();
+
+        assert_eq!(find_roles_root_from_selection(&project).unwrap(), expected);
+        assert_eq!(find_roles_root_from_selection(&chat_pro).unwrap(), expected);
+        assert_eq!(find_roles_root_from_selection(&roles).unwrap(), expected);
+        assert_eq!(find_roles_root_from_selection(&role).unwrap(), expected);
+        let list = list_role_packs_under_roles_root(project.to_string_lossy().to_string()).unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].role_id, "demo");
+
+        let _ = fs::remove_dir_all(&project);
+    }
+
+    #[test]
+    fn default_roles_discovery_uses_the_first_existing_standard_candidate() {
+        use super::{first_existing_roles_root, standard_roles_candidates};
+        use std::fs;
+
+        let root =
+            std::env::temp_dir().join(format!("oclive-pe-default-root-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let missing = root.join("missing");
+        let roles = root.join("roles");
+        fs::create_dir_all(&roles).unwrap();
+
+        assert_eq!(
+            first_existing_roles_root([missing, roles.clone()]),
+            roles
+                .canonicalize()
+                .ok()
+                .map(|path| path.to_string_lossy().to_string())
+        );
+
+        let development_dir = root.join("oclive-pack-editor").join("src-tauri");
+        let sibling_roles = root
+            .join("oclivenewnew")
+            .join("distros")
+            .join("chat-pro")
+            .join("roles");
+        fs::create_dir_all(&development_dir).unwrap();
+        fs::create_dir_all(&sibling_roles).unwrap();
+        assert_eq!(
+            first_existing_roles_root(standard_roles_candidates(&development_dir)),
+            sibling_roles
+                .canonicalize()
+                .ok()
+                .map(|path| path.to_string_lossy().to_string())
+        );
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn load_role_pack_returns_only_known_role_files() {
         use super::{load_role_pack_for_editor, PIPELINE_BLUEPRINT_FILENAME};
         use std::fs;
@@ -818,6 +969,11 @@ mod role_pack_command_tests {
         fs::write(root.join("core_personality.txt"), "core").unwrap();
         fs::write(root.join("ui.json"), "{}").unwrap();
         fs::write(root.join("author.json"), "{}").unwrap();
+        fs::write(root.join("voice_profile.json"), r#"{"schema_version":2}"#).unwrap();
+        fs::create_dir_all(root.join("prompts")).unwrap();
+        fs::write(root.join("prompts/deep_capsule.txt"), "capsule").unwrap();
+        fs::write(root.join("prompts/system.md"), "system aid").unwrap();
+        fs::write(root.join("polish_prompt.md"), "polish").unwrap();
         fs::write(root.join("scenes/home/scene.json"), r#"{"name":"Home"}"#).unwrap();
         fs::write(root.join("scenes/home/description.txt"), "desc").unwrap();
 
@@ -826,6 +982,13 @@ mod role_pack_command_tests {
         assert_eq!(loaded.core_personality_text.as_deref(), Some("core"));
         assert_eq!(loaded.ui_text.as_deref(), Some("{}"));
         assert_eq!(loaded.author_text.as_deref(), Some("{}"));
+        assert_eq!(
+            loaded.voice_profile_text.as_deref(),
+            Some(r#"{"schema_version":2}"#)
+        );
+        assert_eq!(loaded.deep_capsule_text.as_deref(), Some("capsule"));
+        assert_eq!(loaded.system_prompt_text.as_deref(), Some("system aid"));
+        assert_eq!(loaded.polish_prompt_text.as_deref(), Some("polish"));
         assert_eq!(loaded.scene_files.len(), 1);
         assert_eq!(loaded.scene_files[0].scene_id, "home");
         assert_eq!(

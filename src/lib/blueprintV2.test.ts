@@ -198,6 +198,11 @@ describe('buildBlueprintFromLegacy', () => {
         model: 'qwen2.5:7b',
         remote_presence: { default_enabled: true },
         autonomous_scene: { enabled: false },
+        inference_profile: {
+          generation: { temperature: 0.8, maximum_output_tokens: 1536 },
+          context: { minimum_tokens: 8192, preferred_tokens: 16384 },
+          reasoning: { mode: 'adaptive', effort: 0.65 },
+        },
         plugin_backends: { llm: 'ollama' },
       },
     )
@@ -213,13 +218,73 @@ describe('buildBlueprintFromLegacy', () => {
       'reply_quality_anchor',
       'identity_binding',
       'evolution',
-      'ollama_model',
       'remote_presence',
       'autonomous_scene',
+      'inference_profile',
     ]) {
       expect(bp.meta[key]).toBeUndefined()
       expect(bp.runtime_config?.[key]).toBeDefined()
     }
+    expect(bp.runtime_config?.ollama_model).toBeUndefined()
+    expect(bp.runtime_config?.inference_profile).toEqual({
+      generation: { temperature: 0.8, maximum_output_tokens: 1536 },
+      context: { minimum_tokens: 8192, preferred_tokens: 16384 },
+      reasoning: { mode: 'adaptive', effort: 0.65 },
+    })
+  })
+
+  it('rejects invalid Stable v4 inference profile ranges', () => {
+    const bp = buildBlueprintFromLegacy(
+      { id: 'hero', name: 'Hero', version: '1.0.0' },
+      {
+        inference_profile: {
+          generation: {
+            temperature: 2.5,
+            preferred_output_tokens: 2048,
+            maximum_output_tokens: 1024,
+          },
+          context: { minimum_tokens: 32768, preferred_tokens: 8192 },
+        },
+        plugin_backends: { llm: 'ollama' },
+      },
+    )
+    const errors = validateBlueprintV2Typescript(bp, 'hero')
+    expect(errors.some((error) => error.includes('temperature'))).toBe(true)
+    expect(errors.some((error) => error.includes('preferred_output_tokens'))).toBe(true)
+    expect(errors.some((error) => error.includes('minimum_tokens'))).toBe(true)
+  })
+
+  it('keeps Stable v4 creator output free of host model and LLM-route choices', () => {
+    const bp = buildBlueprintFromLegacy(
+      { id: 'hero', name: 'Hero', ollama_model: 'manifest-model' },
+      {
+        model: 'settings-model',
+        ollama_model: 'settings-ollama-model',
+        plugin_backends: {
+          llm: 'remote',
+          directory_plugins: { llm: 'com.example.private-llm', memory: 'com.example.memory' },
+        },
+      },
+    )
+
+    expect(bp.runtime_config?.ollama_model).toBeUndefined()
+    expect(bp.meta.ollama_model).toBeUndefined()
+    expect(bp.slot_registry.llm.backend).toBe('ollama')
+    expect(bp.slot_registry.llm.plugin).toBeNull()
+    expect(bp.slot_registry.memory.plugin).toBe('com.example.memory')
+  })
+
+  it('does not expose imported host model and LLM route in the creator view', () => {
+    const imported = buildBlueprintV2FromLegacy(
+      { id: 'hero', name: 'Hero' },
+      { model: 'private-model', plugin_backends: { llm: 'remote' } },
+    )
+    const { manifest, settings } = blueprintToLegacyParts(imported)
+
+    expect(manifest.ollama_model).toBeUndefined()
+    expect(settings.ollama_model).toBeUndefined()
+    expect(settings.model).toBeUndefined()
+    expect((settings.plugin_backends as { llm?: string }).llm).toBe('ollama')
   })
 
   it('keeps legacy runtime fields in meta for explicit v2 output', () => {

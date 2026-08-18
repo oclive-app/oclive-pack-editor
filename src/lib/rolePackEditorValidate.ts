@@ -7,7 +7,7 @@ import {
   validateBlueprintTypescript,
 } from './blueprintV2'
 import { validateEditorPack, validateMinRuntimeVersion, type ManifestInput, type SettingsInput } from './validation'
-import { invoke } from '@tauri-apps/api/core'
+import { invoke, isTauri } from '@tauri-apps/api/core'
 
 /** 与 `oclive_validation::disk_role_settings::CURRENT_SETTINGS_SCHEMA_VERSION` 一致 */
 export const ROLE_PACK_SETTINGS_SCHEMA_VERSION = 1
@@ -141,12 +141,16 @@ export async function validateRolePackEditorState(
     return { ok: false, errors: allErrors, usedWasm: false }
   }
 
-  if (typeof window !== 'undefined' && '__TAURI__' in window) {
+  if (typeof window !== 'undefined' && isTauri()) {
     try {
       const manifest = JSON.parse(manifestJson) as Record<string, unknown>
+      const legacyValidationSettings = JSON.parse(settingsJson ?? '{}') as Record<string, unknown>
+      // Historical desktop IPC validates the legacy v2 projection. Stable v4
+      // inference_profile is already validated above by the v4 TypeScript path.
+      delete legacyValidationSettings.inference_profile
       await invoke('validate_blueprint_v2_json', {
         manifestText: manifestJson,
-        settingsText: settingsJson ?? '{}',
+        settingsText: JSON.stringify(legacyValidationSettings),
         mergedSceneIds,
         hostRuntimeVersion: hostVersion,
         roleId: String(manifest.id ?? '').trim(),

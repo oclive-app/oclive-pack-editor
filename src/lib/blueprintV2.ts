@@ -75,7 +75,6 @@ const EDITOR_MANAGED_META_KEYS = [
   'identity_binding',
   'dev_only',
   'knowledge',
-  'ollama_model',
   'min_runtime_version',
   'life_trajectory',
   'life_schedule',
@@ -168,7 +167,7 @@ export function mergeEditorPreservedBlueprintFields(
         merged[generatedKey] = generated
         continue
       }
-      if (generated.type === 'complex_emotion') continue
+      if (generated.type === 'complex_emotion' || generated.type === 'llm') continue
       const [targetKey, current] = target
       merged[targetKey] = {
         ...current,
@@ -186,8 +185,12 @@ export function mergeEditorPreservedBlueprintFields(
       ;(blueprint as unknown as Record<string, unknown>)[key] = value
     }
   }
-  if (isRecord(preserved.runtime_config) && !blueprint.runtime_config) {
-    blueprint.runtime_config = { ...preserved.runtime_config }
+  if (isRecord(preserved.runtime_config)) {
+    const generatedRuntime = blueprint.runtime_config ?? {}
+    blueprint.runtime_config = {
+      ...preserved.runtime_config,
+      ...generatedRuntime,
+    }
   }
   if (
     blueprint.schema_version === 2
@@ -274,6 +277,29 @@ const RUNTIME_CONFIG_KEYS = new Set([
   'ollama_model',
   'remote_presence',
   'autonomous_scene',
+  'inference_profile',
+])
+
+const INFERENCE_PROFILE_KEYS = new Set([
+  'generation',
+  'context',
+  'reasoning',
+  'performance_intent',
+])
+const INFERENCE_GENERATION_KEYS = new Set([
+  'temperature',
+  'top_p',
+  'preferred_output_tokens',
+  'maximum_output_tokens',
+])
+const INFERENCE_CONTEXT_KEYS = new Set(['preferred_tokens', 'minimum_tokens'])
+const INFERENCE_REASONING_KEYS = new Set(['mode', 'effort'])
+const INFERENCE_PERFORMANCE_KEYS = new Set([
+  'priority',
+  'prefer_prefix_cache',
+  'prefer_model_residency',
+  'allow_context_reduction',
+  'allow_output_reduction',
 ])
 const EXTENSION_KEYS = new Set([
   'capability',
@@ -367,7 +393,6 @@ function slotRegistryToPluginBackends(
       if (e.type === 'emotion' && !dir.emotion) dir.emotion = e.plugin
       if (e.type === 'event' && !dir.event) dir.event = e.plugin
       if (e.type === 'prompt' && !dir.prompt) dir.prompt = e.plugin
-      if (e.type === 'llm' && !dir.llm) dir.llm = e.plugin
       if (e.type === 'agent' && !dir.agent) dir.agent = e.plugin
     }
     void key
@@ -379,7 +404,9 @@ function slotRegistryToPluginBackends(
     emotion: pick('emotion')?.backend ?? 'builtin',
     event: pick('event')?.backend ?? 'builtin',
     prompt: pick('prompt')?.backend ?? 'builtin',
-    llm: pick('llm')?.backend ?? 'ollama',
+    // The editor exposes only a portable Ollama fallback. The imported LLM
+    // route itself remains in preservedBlueprintFields and is not rewritten.
+    llm: 'ollama',
     agent: pick('agent')?.backend ?? 'builtin',
     directory_plugins: Object.keys(dir).length ? dir : undefined,
     local_memory_provider_id: mem?.local_memory_provider_id ?? undefined,
@@ -392,7 +419,9 @@ export function buildBlueprintFromLegacy(
   settings: Record<string, unknown>,
   schemaVersion: 2 | 4 = 4,
 ): BlueprintDocument {
-  const model = settings.ollama_model ?? settings.model ?? manifest.ollama_model
+  const model = schemaVersion === 2
+    ? settings.ollama_model ?? settings.model ?? manifest.ollama_model
+    : undefined
 
   const personality = Array.isArray(manifest.default_personality)
     ? manifest.default_personality
@@ -438,19 +467,37 @@ export function buildBlueprintFromLegacy(
     ollama_model: model,
     remote_presence: settings.remote_presence ?? manifest.remote_presence,
     autonomous_scene: settings.autonomous_scene ?? manifest.autonomous_scene,
+    inference_profile: settings.inference_profile,
   }
 
   if (schemaVersion === 2) {
     for (const key of RUNTIME_CONFIG_KEYS) {
-      if (key === 'dual_core' || key === 'remote_fallback_to_builtin') continue
+      if (
+        key === 'dual_core'
+        || key === 'remote_fallback_to_builtin'
+        || key === 'inference_profile'
+      ) continue
       const value = runtimeValues[key]
       if (value !== undefined && value !== null) meta[key] = value
     }
   }
 
-  const pb = (settings.plugin_backends ?? {}) as PluginBackendsShape
+  const settingsBackends = (settings.plugin_backends ?? {}) as PluginBackendsShape
+  const pb: PluginBackendsShape = {
+    ...settingsBackends,
+    ...(settingsBackends.directory_plugins
+      ? { directory_plugins: { ...settingsBackends.directory_plugins } }
+      : {}),
+  }
   if (settings.local_memory_provider_id && !pb.local_memory_provider_id) {
     pb.local_memory_provider_id = String(settings.local_memory_provider_id)
+  }
+  if (schemaVersion === 4) {
+    pb.llm = 'ollama'
+    if (pb.directory_plugins) {
+      delete pb.directory_plugins.llm
+      if (Object.keys(pb.directory_plugins).length === 0) delete pb.directory_plugins
+    }
   }
 
   const runtimeConfig: Record<string, unknown> = {}
@@ -469,6 +516,111 @@ export function buildBlueprintFromLegacy(
     ...(schemaVersion === 4 && Object.keys(runtimeConfig).length
       ? { runtime_config: runtimeConfig }
       : {}),
+  }
+}
+
+function validateInferenceProfile(value: unknown, errors: string[]): void {
+  const prefix = 'runtime_config.inference_profile'
+  if (!isRecord(value)) {
+    errors.push(`${prefix} 须为对象`)
+    return
+  }
+  for (const key of Object.keys(value)) {
+    if (!INFERENCE_PROFILE_KEYS.has(key)) errors.push(`${prefix} 含未知字段「${key}」`)
+  }
+
+  const validateObject = (
+    section: unknown,
+    sectionName: string,
+    allowed: ReadonlySet<string>,
+  ): Record<string, unknown> | null => {
+    if (section == null) return null
+    if (!isRecord(section)) {
+      errors.push(`${prefix}.${sectionName} 须为对象`)
+      return null
+    }
+    for (const key of Object.keys(section)) {
+      if (!allowed.has(key)) errors.push(`${prefix}.${sectionName} 含未知字段「${key}」`)
+    }
+    return section
+  }
+  const validateNumber = (
+    section: Record<string, unknown> | null,
+    path: string,
+    min: number,
+    max: number,
+    integer = false,
+    exclusiveMin = false,
+  ): void => {
+    const field = path.split('.').at(-1) ?? path
+    const raw = section?.[field]
+    if (raw == null) return
+    const valid =
+      typeof raw === 'number'
+      && Number.isFinite(raw)
+      && (!integer || Number.isInteger(raw))
+      && (exclusiveMin ? raw > min : raw >= min)
+      && raw <= max
+    if (!valid) errors.push(`${prefix}.${path} 数值范围非法`)
+  }
+
+  const generation = validateObject(value.generation, 'generation', INFERENCE_GENERATION_KEYS)
+  validateNumber(generation, 'generation.temperature', 0, 2)
+  validateNumber(generation, 'generation.top_p', 0, 1, false, true)
+  validateNumber(generation, 'generation.preferred_output_tokens', 1, 32_768, true)
+  validateNumber(generation, 'generation.maximum_output_tokens', 1, 32_768, true)
+  const preferredOutput = generation?.preferred_output_tokens
+  const maximumOutput = generation?.maximum_output_tokens
+  if (
+    typeof preferredOutput === 'number'
+    && typeof maximumOutput === 'number'
+    && preferredOutput > maximumOutput
+  ) {
+    errors.push(`${prefix}.generation.preferred_output_tokens 不得大于 maximum_output_tokens`)
+  }
+
+  const context = validateObject(value.context, 'context', INFERENCE_CONTEXT_KEYS)
+  validateNumber(context, 'context.preferred_tokens', 1, 262_144, true)
+  validateNumber(context, 'context.minimum_tokens', 1, 262_144, true)
+  const preferredContext = context?.preferred_tokens
+  const minimumContext = context?.minimum_tokens
+  if (
+    typeof preferredContext === 'number'
+    && typeof minimumContext === 'number'
+    && minimumContext > preferredContext
+  ) {
+    errors.push(`${prefix}.context.minimum_tokens 不得大于 preferred_tokens`)
+  }
+
+  const reasoning = validateObject(value.reasoning, 'reasoning', INFERENCE_REASONING_KEYS)
+  if (
+    reasoning?.mode != null
+    && !['instant', 'adaptive', 'deep'].includes(String(reasoning.mode))
+  ) {
+    errors.push(`${prefix}.reasoning.mode 枚举非法`)
+  }
+  validateNumber(reasoning, 'reasoning.effort', 0, 1)
+
+  const performance = validateObject(
+    value.performance_intent,
+    'performance_intent',
+    INFERENCE_PERFORMANCE_KEYS,
+  )
+  if (
+    performance?.priority != null
+    && !['latency', 'balanced', 'quality'].includes(String(performance.priority))
+  ) {
+    errors.push(`${prefix}.performance_intent.priority 枚举非法`)
+  }
+  for (const key of [
+    'prefer_prefix_cache',
+    'prefer_model_residency',
+    'allow_context_reduction',
+    'allow_output_reduction',
+  ]) {
+    if (performance?.[key] != null && typeof performance[key] !== 'boolean') {
+      errors.push(`${prefix}.performance_intent.${key} 须为布尔值`)
+    }
   }
 }
 
@@ -515,10 +667,6 @@ export function blueprintToLegacyParts(bp: BlueprintDocument): {
     featured: meta.featured,
     preset_order: meta.preset_order,
   }
-  if (meta.ollama_model != null && String(meta.ollama_model).trim()) {
-    manifest.ollama_model = meta.ollama_model
-  }
-
   const plugin_backends = slotRegistryToPluginBackends(bp.slot_registry)
   const settings: Record<string, unknown> = {
     schema_version: 1,
@@ -534,7 +682,8 @@ export function blueprintToLegacyParts(bp: BlueprintDocument): {
     settings.reply_quality_anchor = meta.reply_quality_anchor
   }
   if (bp.runtime_config) {
-    Object.assign(settings, bp.runtime_config)
+    const { ollama_model: _hostOwnedModel, ...creatorRuntime } = bp.runtime_config
+    Object.assign(settings, creatorRuntime)
   }
   return { manifest, settings }
 }
@@ -770,6 +919,12 @@ export function validateBlueprintTypescript(
             if (key !== 'enabled') errors.push(`runtime_config.dual_core 含未知字段「${key}」`)
           }
         }
+      }
+      if (bp.runtime_config.inference_profile != null) {
+        if (bp.schema_version !== 4) {
+          errors.push('runtime_config.inference_profile 仅属于 Stable v4')
+        }
+        validateInferenceProfile(bp.runtime_config.inference_profile, errors)
       }
     }
   }

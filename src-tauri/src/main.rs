@@ -934,6 +934,9 @@ mod role_pack_command_tests {
                 .map(|path| path.to_string_lossy().to_string())
         );
 
+        // 隔离第一阶段创建的 root/roles，验证候选顺序会继续找到 sibling 布局。
+        let _ = fs::remove_dir_all(&roles);
+
         let development_dir = root.join("oclive-pack-editor").join("src-tauri");
         let sibling_roles = root
             .join("oclivenewnew")

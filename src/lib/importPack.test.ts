@@ -26,14 +26,14 @@ describe('isSafePathUnderRole', () => {
 })
 
 describe('importedPackBrainHint', () => {
-  it('mentions launcher when llm is remote', () => {
+  it('points remote packs to Chat Pro settings', () => {
     const j = JSON.stringify({ plugin_backends: { llm: 'remote' } })
-    expect(importedPackBrainHint(j)).toContain('oclive-launcher')
+    expect(importedPackBrainHint(j)).toContain('Chat Pro 设置页')
   })
 
-  it('suggests simple creation when not remote', () => {
+  it('keeps local model selection out of the pack editor', () => {
     const j = JSON.stringify({ plugin_backends: { llm: 'ollama' } })
-    expect(importedPackBrainHint(j)).toContain('简单创作')
+    expect(importedPackBrainHint(j)).toContain('Chat Pro 设置页')
   })
 })
 
@@ -114,8 +114,8 @@ describe('importRolePackFromZip', () => {
     const f = await zipToFile(z, 'p.zip')
     const r = await importRolePackFromZip(f)
     expect(r.preservedBlueprintFields?.includes).toEqual(blueprint.includes)
+    expect(r.voiceProfileJson).toBe('{"schema_version":1}')
     expect(r.preservedFiles?.map((x) => x.relPath)).toEqual([
-      'voice_profile.json',
       'blueprint/includes/personality.json',
     ])
   })

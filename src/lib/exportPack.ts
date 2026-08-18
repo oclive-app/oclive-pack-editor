@@ -129,6 +129,14 @@ export type PackExtraFiles = {
   includeDefaultReplyQualityAnchor?: boolean
   /** 可选：`roles/{id}/config.json` 全文 */
   configJson?: string
+  /** 可选：`roles/{id}/voice_profile.json` 全文 */
+  voiceProfileJson?: string
+  /** 可选：`roles/{id}/prompts/deep_capsule.txt` 全文 */
+  deepCapsuleText?: string
+  /** 可选：`roles/{id}/prompts/system.md` 创作辅助全文 */
+  systemPromptMarkdown?: string
+  /** 可选：`roles/{id}/polish_prompt.md` 全文 */
+  polishPromptMarkdown?: string
   /** Optional Chat Pro adult-role extension; exported inside the same role pack. */
   adultExtensionJson?: string
   /** 可选：`roles/{id}/portrait_catalog.json` 全文（A2 SSOT） */
@@ -190,9 +198,22 @@ export function buildRolePackFiles(
 
   const scenes = mergedSceneIds(m['scenes'] as string[] | undefined, [])
 
+  let hasManagedPrompt = false
   if (anchorBody) {
     files.set(`${id}/${REPLY_QUALITY_ANCHOR_REL_PATH}`, `${anchorBody.trim()}\n`)
-  } else {
+    hasManagedPrompt = true
+  }
+  const deepCapsule = extra?.deepCapsuleText?.trim()
+  if (deepCapsule) {
+    files.set(`${id}/prompts/deep_capsule.txt`, `${deepCapsule}\n`)
+    hasManagedPrompt = true
+  }
+  const systemPrompt = extra?.systemPromptMarkdown?.trim()
+  if (systemPrompt) {
+    files.set(`${id}/prompts/system.md`, `${systemPrompt}\n`)
+    hasManagedPrompt = true
+  }
+  if (!hasManagedPrompt) {
     files.set(
       `${id}/prompts/.oclive_placeholder.txt`,
       '可选：在此目录放置 reply_quality_anchor.md 等创作辅助 Markdown。\n',
@@ -228,6 +249,19 @@ export function buildRolePackFiles(
       `${id}/user_identities/index.json`,
       uiIndexRaw.endsWith('\n') ? uiIndexRaw : `${uiIndexRaw}\n`,
     )
+  }
+
+  const voiceProfileRaw = extra?.voiceProfileJson?.trim()
+  if (voiceProfileRaw) {
+    files.set(
+      `${id}/voice_profile.json`,
+      voiceProfileRaw.endsWith('\n') ? voiceProfileRaw : `${voiceProfileRaw}\n`,
+    )
+  }
+
+  const polishPromptRaw = extra?.polishPromptMarkdown?.trim()
+  if (polishPromptRaw) {
+    files.set(`${id}/polish_prompt.md`, `${polishPromptRaw}\n`)
   }
 
   const adultRaw = extra?.adultExtensionJson?.trim()

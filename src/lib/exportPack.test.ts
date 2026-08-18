@@ -95,6 +95,20 @@ describe('buildRolePackFiles', () => {
     expect(files.get('x/user_identities/index.json')).toBe(body)
   })
 
+  it('writes editor-managed prompt, voice, and polish files', () => {
+    const files = buildRolePackFiles('x', baseManifest, { schema_version: 1 }, {
+      voiceProfileJson: '{"schema_version":2}',
+      deepCapsuleText: 'short persona',
+      systemPromptMarkdown: '# authoring aid',
+      polishPromptMarkdown: '# polish preset',
+    })
+    expect(files.get('x/voice_profile.json')).toBe('{"schema_version":2}\n')
+    expect(files.get('x/prompts/deep_capsule.txt')).toBe('short persona\n')
+    expect(files.get('x/prompts/system.md')).toBe('# authoring aid\n')
+    expect(files.get('x/polish_prompt.md')).toBe('# polish preset\n')
+    expect(files.has('x/prompts/.oclive_placeholder.txt')).toBe(false)
+  })
+
   it('writes memory seed and user identity templates independently', () => {
     const memory = '{"schema_version":1,"memories":[],"extensions":{}}\n'
     const files = buildRolePackFiles('x', baseManifest, { schema_version: 1 }, {
@@ -200,6 +214,32 @@ describe('buildRolePackFiles', () => {
     expect(Object.keys(blueprint.slot_registry)).toHaveLength(9)
     expect(blueprint.slot_registry.llm_local.model).toBe('qwen')
     expect(blueprint.slot_registry.llm_remote.url).toBe('https://llm.invalid')
+  })
+
+  it('preserves imported host model config while merging creator inference values', () => {
+    const files = buildRolePackFiles(
+      'x',
+      baseManifest,
+      {
+        schema_version: 1,
+        interaction_mode: 'pure_chat',
+        inference_profile: { generation: { temperature: 0.75 } },
+      },
+      {
+        preservedBlueprintFields: {
+          schema_version: 4,
+          runtime_config: {
+            interaction_mode: 'immersive',
+            ollama_model: 'legacy-private-model',
+          },
+        },
+      },
+    )
+    const blueprint = JSON.parse(files.get('x/pipeline.ocblueprint')!)
+
+    expect(blueprint.runtime_config.interaction_mode).toBe('pure_chat')
+    expect(blueprint.runtime_config.inference_profile.generation.temperature).toBe(0.75)
+    expect(blueprint.runtime_config.ollama_model).toBe('legacy-private-model')
   })
 
   it('roundtrips safe preserved files into zip export', async () => {

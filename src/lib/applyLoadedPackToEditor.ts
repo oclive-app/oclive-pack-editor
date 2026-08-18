@@ -30,6 +30,10 @@ export type ApplyLoadedPackInput = {
   uiJson?: string
   authorJson?: string
   memorySeedJson?: string
+  voiceProfileJson?: string
+  deepCapsuleText?: string
+  systemPromptMarkdown?: string
+  polishPromptMarkdown?: string
   userIdentityFiles?: RolePackTextFile[]
   userIdentitiesIndexJson?: string
   preservedFiles?: RolePackBinaryFile[]
@@ -53,12 +57,19 @@ export type ApplyLoadedPackTargets = {
   creatorMessageToOthers: { value: string }
   creatorMessageMode: { value: CreatorMessageExportMode }
   uiConfig: UiConfig
+  uiJsonSource?: { value: string }
+  authorJsonSource?: { value: string }
   authorSummary: { value: string }
   authorDetailMarkdown: { value: string }
   authorRecommendedRows: { value: AuthorRecRow[] }
   authorIncludeSuggestedUi: { value: boolean }
   authorSuggestedBackendsJson: { value: string }
   memorySeedJson?: { value: string }
+  configJsonText?: { value: string }
+  voiceProfileJson?: { value: string }
+  deepCapsuleText?: { value: string }
+  systemPromptMarkdown?: { value: string }
+  polishPromptMarkdown?: { value: string }
   userIdentityFiles?: { value: RolePackTextFile[] }
   userIdentitiesIndexJson?: { value: string }
   preservedFiles?: { value: RolePackBinaryFile[] }
@@ -84,6 +95,10 @@ export function importedPackToApplyInput(imp: ImportedRolePack): ApplyLoadedPack
     uiJson: imp.uiJson,
     authorJson: imp.authorJson,
     memorySeedJson: imp.memorySeedJson,
+    voiceProfileJson: imp.voiceProfileJson,
+    deepCapsuleText: imp.deepCapsuleText,
+    systemPromptMarkdown: imp.systemPromptMarkdown,
+    polishPromptMarkdown: imp.polishPromptMarkdown,
     userIdentityFiles: imp.userIdentityFiles,
     userIdentitiesIndexJson: imp.userIdentitiesIndexJson,
     preservedFiles: imp.preservedFiles,
@@ -100,6 +115,15 @@ export function applyLoadedPackToEditor(input: ApplyLoadedPackInput, targets: Ap
     (input.corePersonality ?? '').trim() || DEFAULT_CORE_PERSONALITY_TEXT
   targets.worldviewMarkdown.value = input.worldviewMarkdown ?? ''
   if (targets.memorySeedJson) targets.memorySeedJson.value = input.memorySeedJson ?? ''
+  if (targets.configJsonText) targets.configJsonText.value = input.configJson ?? ''
+  if (targets.voiceProfileJson) targets.voiceProfileJson.value = input.voiceProfileJson ?? ''
+  if (targets.deepCapsuleText) targets.deepCapsuleText.value = input.deepCapsuleText ?? ''
+  if (targets.systemPromptMarkdown) {
+    targets.systemPromptMarkdown.value = input.systemPromptMarkdown ?? ''
+  }
+  if (targets.polishPromptMarkdown) {
+    targets.polishPromptMarkdown.value = input.polishPromptMarkdown ?? ''
+  }
   if (targets.userIdentityFiles) {
     targets.userIdentityFiles.value = (input.userIdentityFiles ?? []).map((f) => ({ ...f }))
   }
@@ -142,6 +166,8 @@ export function applyLoadedPackToEditor(input: ApplyLoadedPackInput, targets: Ap
   if (targets.adultExtensionJson)
     targets.adultExtensionJson.value = input.adultExtensionJson ?? ''
   targets.creatorMessageToOthers.value = input.creatorMessage ?? ''
+  if (targets.uiJsonSource) targets.uiJsonSource.value = input.uiJson ?? ''
+  if (targets.authorJsonSource) targets.authorJsonSource.value = input.authorJson ?? ''
   Object.assign(targets.uiConfig, parseUiConfigJson(input.uiJson?.trim() || '{}'))
 
   if (input.authorJson?.trim()) {

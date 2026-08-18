@@ -46,6 +46,14 @@ export type ImportedRolePack = {
   authorJson: string
   /** roles/{id}/memory_seed.json（可选，只读初始记忆） */
   memorySeedJson?: string
+  /** roles/{id}/voice_profile.json（可选语音侧车） */
+  voiceProfileJson?: string
+  /** roles/{id}/prompts/deep_capsule.txt（可选离线人设胶囊） */
+  deepCapsuleText?: string
+  /** roles/{id}/prompts/system.md（可选创作辅助） */
+  systemPromptMarkdown?: string
+  /** roles/{id}/polish_prompt.md（可选回复润色提示） */
+  polishPromptMarkdown?: string
   /** roles/{id}/user_identities/*.md 模板 */
   userIdentityFiles?: RolePackTextFile[]
   /** roles/{id}/user_identities/index.json */
@@ -154,6 +162,10 @@ export async function importRolePackFromZip(file: File): Promise<ImportedRolePac
   const uiJson = (await readText('ui.json')).trim()
   const authorJson = (await readText('author.json')).trim()
   const memorySeedJson = await readText('memory_seed.json')
+  const voiceProfileJson = await readText('voice_profile.json')
+  const deepCapsuleText = await readText('prompts/deep_capsule.txt')
+  const systemPromptMarkdown = await readText('prompts/system.md')
+  const polishPromptMarkdown = await readText('polish_prompt.md')
   const userIdentitiesIndexJson = await readText('user_identities/index.json')
   const userIdentityFiles: RolePackTextFile[] = []
   for (const n of names) {
@@ -220,6 +232,10 @@ export async function importRolePackFromZip(file: File): Promise<ImportedRolePac
     PIPELINE_BLUEPRINT_FILENAME,
     'core_personality.txt',
     'memory_seed.json',
+    'voice_profile.json',
+    'prompts/deep_capsule.txt',
+    'prompts/system.md',
+    'polish_prompt.md',
     'creator_message.txt',
     'ui.json',
     'author.json',
@@ -304,6 +320,10 @@ export async function importRolePackFromZip(file: File): Promise<ImportedRolePac
     uiJson,
     authorJson,
     memorySeedJson,
+    voiceProfileJson,
+    deepCapsuleText,
+    systemPromptMarkdown,
+    polishPromptMarkdown,
     userIdentityFiles,
     userIdentitiesIndexJson,
     preservedFiles,
@@ -312,15 +332,15 @@ export async function importRolePackFromZip(file: File): Promise<ImportedRolePac
   }
 }
 
-/** 导入成功后附在状态栏的短提示（与 oclive-launcher / 简单创作「对话推理」一致）。 */
+/** 导入成功后附在状态栏的短提示（实际推理选择归 Chat Pro 设置页）。 */
 export function importedPackBrainHint(settingsJson: string): string {
   try {
     const s = JSON.parse(settingsJson) as { plugin_backends?: { llm?: string } }
     if (s.plugin_backends?.llm === 'remote') {
-      return '（云端 LLM：运行 oclive 时请在 oclive-launcher 填写 Remote LLM URL。）'
+      return '（此包原先建议云端 LLM；实际后端与连接地址请在 Chat Pro 设置页确认。）'
     }
   } catch {
     /* ignore */
   }
-  return '（推理方式可在简单创作「对话推理」或 oclive-launcher 中调整。）'
+  return '（角色包不固化本机模型；实际后端、基础模型与 GGUF 请在 Chat Pro 设置页调整。）'
 }

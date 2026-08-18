@@ -10,6 +10,8 @@ import {
 
   collectCatalogBinaryAssets,
 
+  mergeManagedConfigJson,
+
   parseConfigJson,
 
   parsePortraitCatalogJson,
@@ -200,6 +202,17 @@ describe('portraitCatalog', () => {
 
     expect(cfg.visual.live2dModel).toBe('m.model3.json')
 
+  })
+
+  it('mergeManagedConfigJson preserves unknown facilities', () => {
+    const merged = JSON.parse(mergeManagedConfigJson(JSON.stringify({
+      chat_storage: { backend: 'hybrid', future: true },
+      portrait_catalog: { future_portrait: 'keep' },
+      future_facility: { enabled: true },
+    }), true, { enabled: false, backend: 'image' }))
+    expect(merged.chat_storage).toEqual({ backend: 'hybrid', future: true })
+    expect(merged.portrait_catalog).toEqual({ future_portrait: 'keep', enabled: true })
+    expect(merged.future_facility).toEqual({ enabled: true })
   })
 
 

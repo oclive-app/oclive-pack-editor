@@ -28,4 +28,19 @@ describe('authorPack helpers (T13)', () => {
     })
     expect(disk).toBeUndefined()
   })
+
+  it('preserves unknown author fields while updating managed values', () => {
+    const disk = buildAuthorJsonDisk({
+      summary: 'new summary',
+      detailMarkdown: '',
+      rows: [emptyAuthorRecRow()],
+      includeSuggestedUi: false,
+      uiConfig: defaultUiConfig(),
+      suggestedPluginBackendsJson: '',
+      currentRaw: JSON.stringify({ future_market_field: { keep: true } }),
+    })
+    const parsed = JSON.parse(disk!)
+    expect(parsed.summary).toBe('new summary')
+    expect(parsed.future_market_field).toEqual({ keep: true })
+  })
 })

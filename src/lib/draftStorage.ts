@@ -32,12 +32,17 @@ export type PackDraftSnapshot = {
   version: 2
   savedAt: string
   creationMode: 'simple' | 'advanced'
-  advancedTab: 'manifest' | 'settings' | 'core' | 'memory' | 'identities' | 'world' | 'scenes' | 'images'
+  advancedTab: 'manifest' | 'settings' | 'core' | 'config' | 'memory' | 'identities' | 'world' | 'scenes' | 'prompts' | 'voice' | 'ui' | 'author' | 'images'
   manifestText: string
   settingsText: string
   corePersonalityText: string
   adultExtensionJson?: string
   memorySeedJson?: string
+  configJsonText?: string
+  voiceProfileJson?: string
+  deepCapsuleText?: string
+  systemPromptMarkdown?: string
+  polishPromptMarkdown?: string
   userIdentityFiles?: RolePackTextFile[]
   userIdentitiesIndexJson?: string
   preservedBlueprintFields?: Record<string, unknown>
@@ -52,6 +57,8 @@ export type PackDraftSnapshot = {
   authorIncludeSuggestedUi: boolean
   authorSuggestedBackendsJson: string
   uiConfig: UiConfig
+  uiJsonSource?: string
+  authorJsonSource?: string
   /** Slot id → picked file name (no binary). */
   portraitSlotMeta?: Partial<Record<PortraitSlotId, PortraitSlotDraftMeta>>
   portraitExtraMeta?: PortraitExtraDraftMeta[]

@@ -64,6 +64,7 @@ export function buildAuthorJsonDisk(args: {
   includeSuggestedUi: boolean
   uiConfig: UiConfig
   suggestedPluginBackendsJson: string
+  currentRaw?: string
 }): string | undefined {
   const summary = args.summary.trim()
   const detail = args.detailMarkdown.trim()
@@ -87,11 +88,21 @@ export function buildAuthorJsonDisk(args: {
 
   const hasRec = recs.length > 0
   const hasBack = backendsObj !== undefined
-  if (!summary && !detail && !hasRec && !args.includeSuggestedUi && !hasBack) {
+  if (!summary && !detail && !hasRec && !args.includeSuggestedUi && !hasBack && !args.currentRaw?.trim()) {
     return undefined
   }
 
+  let preserved: Record<string, unknown> = {}
+  try {
+    const value = JSON.parse(args.currentRaw ?? '') as unknown
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      preserved = value as Record<string, unknown>
+    }
+  } catch {
+    /* invalid source falls back to editor-managed fields */
+  }
   const obj: Record<string, unknown> = {
+    ...preserved,
     schema_version: 1,
     summary,
     detail_markdown: detail,
@@ -109,9 +120,13 @@ export function buildAuthorJsonDisk(args: {
     } catch {
       /* skip */
     }
+  } else {
+    delete obj.suggested_ui
   }
   if (hasBack) {
     obj.suggested_plugin_backends = backendsObj
+  } else {
+    delete obj.suggested_plugin_backends
   }
 
   return JSON.stringify(obj, null, 2) + '\n'

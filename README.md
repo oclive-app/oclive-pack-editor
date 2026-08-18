@@ -1,6 +1,6 @@
 # oclive-pack-editor
 
-独立 **角色包编写器**（Vite + Vue 3 + TypeScript + **Tauri 2** 桌面壳）：面向创作者的 **简单创作** 流程（人设、立绘、世界观 → 导出 `.ocpak` / 写入 `roles/`），并保留 **高级创作**（manifest / settings / 场景 JSON 等）。产物与 **oclivenewnew** 运行时兼容；**不包含**对话引擎源码。
+独立 **角色包编写器**（Vite + Vue 3 + TypeScript + **Tauri 2** 桌面壳）：面向创作者的 **简单创作** 流程（人设、立绘、世界观 → 导出 `.ocpak` / 写入 `roles/`），并提供按真实角色包文件组织的 **高级创作**。产物与 **oclivenewnew** 运行时兼容；**不包含**对话引擎源码。
 
 [![CI](https://github.com/linkaiheng2233-cyber/oclive-pack-editor/actions/workflows/ci.yml/badge.svg)](https://github.com/linkaiheng2233-cyber/oclive-pack-editor/actions/workflows/ci.yml)
 
@@ -24,7 +24,7 @@
 
 | 项目 | 说明 |
 |------|------|
-| **本仓库** | 产出 **`pipeline.ocblueprint`**（新包 Stable v4；v2 兼容）、`core_personality.txt`、可选只读 **`memory_seed.json`**、**`user_identities/*.md`**、**`knowledge/**/*.md`**（多文件世界观）、占位场景、`assets/images/` 情绪图等；可选 **`prompts/reply_quality_anchor.md`**、**`creator_message.txt`**（创作者公告；**oclivenewnew 运行时一般不读取**，仅部分归档工具展示） |
+| **本仓库** | 产出 **`pipeline.ocblueprint`**（新包 Stable v4；v2 兼容）、`core_personality.txt`、可选只读 **`memory_seed.json`**、**`user_identities/*.md`**、**`knowledge/**/*.md`**、场景、情绪资源、`config.json`、`ui.json`、`author.json`、`voice_profile.json` 与已知 `prompts/` 文件；未知安全文件和未来字段在导入导出时保留 |
 | **oclivenewnew** | 加载、校验与对话；契约原文在其仓库 **`creator-docs/`** 与 **`roles/README_MANIFEST.md`** |
 
 ## 与「插件市场 / 模块条目 / Profile（特征码）」的边界
@@ -77,8 +77,8 @@
 - **简单创作**
   - **基础**：**核心性格档案**长文（写入 `core_personality.txt`）与 **情绪图片**（导出至 `assets/images/`，文件名需与 oclive 情绪资源命名一致）。
   - **进阶**（可折叠）：场景、用户身份、**世界观**（`knowledge/world.md`）、**事件影响系数**、**人格来源**（`evolution.personality_source`）、**单轮可变档案步长**（`max_change_per_event`）等，对应 blueprint **meta** 与运行时视图字段。
-  - **对话推理（大脑）**（进阶 · 引擎设置）：与 **oclive-launcher** 对齐，选择 **本机 Ollama**（填写 `model`）或 **云端 Remote LLM**（包内 `slot_registry` 中 llm 槽为 remote）；云端侧车 URL 在启动 oclive 时由启动器注入 `OCLIVE_REMOTE_LLM_URL`，协议见 oclivenewnew `REMOTE_PLUGIN_PROTOCOL.md`。记忆 / 情绪 / 事件 / Prompt 四类后端仍在同页「其他插件后端」中配置。
-- **高级创作**：分标签编辑 **角色门面 / 运行时 JSON 视图**、**core_personality.txt**、只读初始记忆 **`memory_seed.json`**、用户身份模板 **`user_identities/*.md` + `index.json`**、**知识 Markdown（`knowledge/*.md`）**、**情绪图片列表**；适合插件字段、多身份与完整包结构。初始记忆只随包分发，不等同于运行时生成的长期/短期记忆。
+  - **推理归属**：简单包只保留 **Ollama 兜底**，不写入当前电脑的模型名、GGUF 或运行参数；实际后端和基础模型统一在 **Chat Pro 设置页**选择。
+- **高级创作**：按实际文件导航编辑 **`pipeline.ocblueprint`**、`core_personality.txt` / `creator_message.txt`、`config.json`、`memory_seed.json`、`user_identities/`、`knowledge/`、`scenes/`、`prompts/`、`voice_profile.json`、`ui.json`、`author.json` 与情绪资源。Stable v4 的 **理想推理配置**只表达可移植采样、预算、推理强度和性能意图；不重复 Chat Pro 的模型/GGUF 设置。
 - **世界观与知识文件（高级 · 世界观）**
   - 支持多个 **`knowledge/*.md`**；简单模式下的「世界观」仍与 **`knowledge/world.md`** 同步。
   - **Front matter 表单**：`id`、`tags`、`scenes`、`event_hints`、`weight`，无需手写 YAML；正文与元数据分离编辑。
@@ -86,7 +86,7 @@
   - **知识强调预览 / 调参助手**（仅编辑器内近似）：输入关键词可预览命中与原因、正文片段；可选「预览条件：场景」与严格场景开关；**临时权重滑杆**只影响预览排序，满意后再写入真实 `weight`。运行时召回以 oclivenewnew 为准，预览用于创作调参。
 - **导入角色包**：支持 **`.zip` / `.ocpak`**，解析后回填上述内容，便于在已有包上修改或另存为新包。导入后会保留编写器不直接编辑的安全文件与蓝图扩展字段，避免再次导出时静默丢失。导入时会校验 zip 内路径：拒绝含 `..` / `.` 段的非法路径（防 zip-slip）；情绪图仅接受 `{roleId}/assets/images/` 下**单层**文件名（不接受子目录）。
 
-**简单创作已覆盖（表单 → JSON）**：`manifest` 侧 `id` / `name` / `version` / `author` / `description` / `min_runtime_version`（可选）/ `scenes` / `default_personality` / 单槽 `user_relations` + `default_relation` / **`knowledge.enabled` 与 `knowledge.glob`**（与 `settings.knowledge` 同步写入，合并时 settings 优先）；`settings` 侧 `schema_version` / `model` / `evolution.event_impact_factor` / **`evolution.personality_source`** / **`evolution.max_change_per_event`**（`ai_analysis_interval`、`max_total_change` 等其余演化字段保留原 JSON）/ `identity_binding` / `interaction_mode` / `memory_config.scene_weight_multiplier`（`topic_weights` 等保留）/ `remote_presence.default_enabled` / `plugin_backends`。**仍须高级创作或手写 JSON 的典型项**：多身份并存、`life_trajectory` / `life_schedule`、`dev_only`、`autonomous_scene`、逐场景 `topic_weights` 精调等（见 oclivenewnew `PACK_VERSIONING.md`）。
+**简单创作已覆盖（表单 → JSON）**：角色 `id` / `name` / `version` / `author` / `description` / `min_runtime_version`（可选）/ `scenes` / `default_personality` / 单槽 `user_relations` + `default_relation` / **`knowledge.enabled` 与 `knowledge.glob`**；运行部分覆盖 `schema_version` / `evolution.event_impact_factor` / **`evolution.personality_source`** / **`evolution.max_change_per_event`** / `identity_binding` / `interaction_mode` / `memory_config.scene_weight_multiplier` / `remote_presence.default_enabled` 以及非 LLM 插件后端。简单模式会删除旧的 `model` / `ollama_model` 并固定 `plugin_backends.llm = ollama` 作为兜底，避免复制 Chat Pro 设置。**仍须高级创作的典型项**：理想推理配置、多身份并存、`life_trajectory` / `life_schedule`、`dev_only`、`autonomous_scene`、逐场景 `topic_weights` 精调等。
 
 编写器 **不包含**对话引擎本体，也不启动运行时、插件或任意外部进程。动态行为以角色包写入运行时 **roles 根** 后，由完整 A.I.Live 进程加载测试为准。
 

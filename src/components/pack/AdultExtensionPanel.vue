@@ -238,6 +238,12 @@ function updateInterval(event: Event): void {
   justify-content: space-between;
 }
 
+.adult-hero > div,
+.adult-card-heading > div {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
 .adult-hero h2,
 .adult-card h3,
 .adult-scene h4 {
@@ -343,6 +349,7 @@ function updateInterval(event: Event): void {
 }
 
 .adult-button {
+  flex-shrink: 0;
   border: 1px solid var(--fluent-border-stroke);
   border-radius: 0.65rem;
   background: var(--fluent-bg-layer, rgba(255, 255, 255, 0.06));
@@ -351,6 +358,7 @@ function updateInterval(event: Event): void {
   padding: 0.58rem 0.9rem;
   font: inherit;
   font-weight: 650;
+  white-space: nowrap;
 }
 
 .adult-button--primary {
@@ -375,6 +383,10 @@ function updateInterval(event: Event): void {
   .adult-card-heading,
   .adult-grid {
     flex-direction: column;
+  }
+
+  .adult-button {
+    align-self: flex-start;
   }
 }
 </style>

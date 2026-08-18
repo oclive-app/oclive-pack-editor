@@ -55,6 +55,7 @@ import {
   applyExportProfile,
   buildPortraitCatalogJson,
   buildSimpleConfigJson,
+  mergeManagedConfigJson,
   collectCatalogBinaryAssets,
   emotionFilesFromCatalog,
   parseConfigJson,
@@ -77,7 +78,7 @@ import {
   emptyAuthorRecRow,
   type AuthorRecRow,
 } from '../lib/authorPack'
-import { serializeUiConfig } from '../lib/uiConfig'
+import { mergeUiConfigJson } from '../lib/uiConfig'
 import { defaultUiConfig, type UiConfig } from '../types/uiConfig'
 import {
   applySimpleManifestToJson,
@@ -118,6 +119,13 @@ export function usePackEditor() {
   const adultExtensionJson = ref('')
   /** 创作者维护的只读初始记忆；与运行时 LTM/STM 分离。 */
   const memorySeedJson = ref('')
+  const configJsonText = ref(
+    buildSimpleConfigJson(false, { enabled: false, backend: 'image' }),
+  )
+  const voiceProfileJson = ref('')
+  const deepCapsuleText = ref('')
+  const systemPromptMarkdown = ref('')
+  const polishPromptMarkdown = ref('')
   const userIdentityFiles = ref<RolePackTextFile[]>([])
   const userIdentitiesIndexJson = ref('')
   const preservedFiles = ref<RolePackBinaryFile[]>([])
@@ -186,6 +194,8 @@ export function usePackEditor() {
   const authorRecommendedRows = ref<AuthorRecRow[]>([emptyAuthorRecRow()])
   const authorIncludeSuggestedUi = ref(false)
   const authorSuggestedBackendsJson = ref('')
+  const uiJsonSource = ref('')
+  const authorJsonSource = ref('')
 
   const validationErrors = ref<string[]>([])
   /** 最近一次检查是否用 wasm；`null` 表示本会话尚未跑过检查 */
@@ -215,7 +225,7 @@ export function usePackEditor() {
   }
 
   const creationMode = ref<'simple' | 'advanced'>('simple')
-  const advancedTab = ref<'manifest' | 'settings' | 'core' | 'memory' | 'identities' | 'world' | 'scenes' | 'images'>('manifest')
+  const advancedTab = ref<'manifest' | 'settings' | 'core' | 'config' | 'memory' | 'identities' | 'world' | 'scenes' | 'prompts' | 'voice' | 'ui' | 'author' | 'images'>('manifest')
 
   const simpleM = reactive<SimpleManifestForm>(defaultSimpleManifestForm())
   const simpleS = reactive<SimpleSettingsForm>(defaultSimpleSettingsForm())
@@ -334,6 +344,7 @@ export function usePackEditor() {
       includeSuggestedUi: authorIncludeSuggestedUi.value,
       uiConfig,
       suggestedPluginBackendsJson: authorSuggestedBackendsJson.value,
+      currentRaw: authorJsonSource.value,
     })
     const profiled = applyExportProfile(
       exportProfile.value,
@@ -350,7 +361,7 @@ export function usePackEditor() {
     const extras = profiled.extraEntries
     const hasCatalog = Object.keys(slotMap).length > 0 || extras.length > 0
     return {
-      uiConfigJson: serializeUiConfig(uiConfig),
+      uiConfigJson: mergeUiConfigJson(uiJsonSource.value, uiConfig),
       corePersonality: corePersonalityText.value,
       worldviewMarkdown: worldviewMarkdown.value,
       knowledgeMarkdownFiles: docs,
@@ -358,7 +369,19 @@ export function usePackEditor() {
       catalogAssets: collectCatalogBinaryAssets(slotMap, extras),
       creatorMessage: creatorMessageToOthers.value,
       creatorMessageMode: creatorMessageMode.value,
-      configJson: buildSimpleConfigJson(profiled.portraitEnabled && hasCatalog, profiled.visual),
+      configJson: mergeManagedConfigJson(
+        configJsonText.value,
+        profiled.portraitEnabled && hasCatalog,
+        profiled.visual,
+      ),
+      ...(voiceProfileJson.value.trim() ? { voiceProfileJson: voiceProfileJson.value } : {}),
+      ...(deepCapsuleText.value.trim() ? { deepCapsuleText: deepCapsuleText.value } : {}),
+      ...(systemPromptMarkdown.value.trim()
+        ? { systemPromptMarkdown: systemPromptMarkdown.value }
+        : {}),
+      ...(polishPromptMarkdown.value.trim()
+        ? { polishPromptMarkdown: polishPromptMarkdown.value }
+        : {}),
       ...(adultExtensionJson.value.trim()
         ? { adultExtensionJson: adultExtensionJson.value }
         : {}),
@@ -404,6 +427,19 @@ export function usePackEditor() {
   })
 
   watch(worldKnowledgeTexts, syncKnowledgeFilesFromWorldTexts, { deep: true })
+
+  watch(configJsonText, (raw) => {
+    try {
+      const parsed = JSON.parse(raw) as unknown
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return
+    } catch {
+      return
+    }
+    const config = parseConfigJson(raw)
+    visualPresentationEnabled.value = config.visual.enabled
+    visualPresentationBackend.value = config.visual.backend
+    visualPresentationLive2dModel.value = config.visual.live2dModel ?? ''
+  })
 
   watch(
     manifestText,
@@ -914,6 +950,11 @@ export function usePackEditor() {
     corePersonalityText,
     adultExtensionJson,
     memorySeedJson,
+    configJsonText,
+    voiceProfileJson,
+    deepCapsuleText,
+    systemPromptMarkdown,
+    polishPromptMarkdown,
     userIdentityFiles,
     userIdentitiesIndexJson,
     preservedFiles,
@@ -929,6 +970,8 @@ export function usePackEditor() {
     creatorMessageToOthers,
     creatorMessageMode,
     uiConfig,
+    uiJsonSource,
+    authorJsonSource,
     authorSummary,
     authorDetailMarkdown,
     authorRecommendedRows,
@@ -1040,6 +1083,11 @@ export function usePackEditor() {
       corePersonalityText: corePersonalityText.value,
       adultExtensionJson: adultExtensionJson.value,
       memorySeedJson: memorySeedJson.value,
+      configJsonText: configJsonText.value,
+      voiceProfileJson: voiceProfileJson.value,
+      deepCapsuleText: deepCapsuleText.value,
+      systemPromptMarkdown: systemPromptMarkdown.value,
+      polishPromptMarkdown: polishPromptMarkdown.value,
       userIdentityFiles: userIdentityFiles.value.map((f) => ({ ...f })),
       userIdentitiesIndexJson: userIdentitiesIndexJson.value,
       preservedBlueprintFields: { ...preservedBlueprintFields.value },
@@ -1062,6 +1110,8 @@ export function usePackEditor() {
       authorIncludeSuggestedUi: authorIncludeSuggestedUi.value,
       authorSuggestedBackendsJson: authorSuggestedBackendsJson.value,
       uiConfig: { ...uiConfig },
+      uiJsonSource: uiJsonSource.value,
+      authorJsonSource: authorJsonSource.value,
       portraitSlotMeta: capturePortraitSlotMeta(),
       portraitExtraMeta: capturePortraitExtraMeta(),
       visualPresentationEnabled: visualPresentationEnabled.value,
@@ -1079,6 +1129,12 @@ export function usePackEditor() {
     corePersonalityText.value = snapshot.corePersonalityText
     adultExtensionJson.value = snapshot.adultExtensionJson ?? ''
     memorySeedJson.value = snapshot.memorySeedJson ?? ''
+    configJsonText.value = snapshot.configJsonText
+      ?? buildSimpleConfigJson(false, { enabled: false, backend: 'image' })
+    voiceProfileJson.value = snapshot.voiceProfileJson ?? ''
+    deepCapsuleText.value = snapshot.deepCapsuleText ?? ''
+    systemPromptMarkdown.value = snapshot.systemPromptMarkdown ?? ''
+    polishPromptMarkdown.value = snapshot.polishPromptMarkdown ?? ''
     userIdentityFiles.value = (snapshot.userIdentityFiles ?? []).map((f) => ({ ...f }))
     userIdentitiesIndexJson.value = snapshot.userIdentitiesIndexJson ?? ''
     preservedFiles.value = []
@@ -1139,8 +1195,10 @@ export function usePackEditor() {
     authorIncludeSuggestedUi.value = snapshot.authorIncludeSuggestedUi
     authorSuggestedBackendsJson.value = snapshot.authorSuggestedBackendsJson
     Object.assign(uiConfig, snapshot.uiConfig)
+    uiJsonSource.value = snapshot.uiJsonSource ?? ''
+    authorJsonSource.value = snapshot.authorJsonSource ?? ''
     creationMode.value = snapshot.creationMode
-    advancedTab.value = snapshot.advancedTab
+    advancedTab.value = snapshot.advancedTab === 'settings' ? 'manifest' : snapshot.advancedTab
     if (snapshot.sceneEditorEntries?.length) {
       applySceneEditorEntries(snapshot.sceneEditorEntries)
     } else {
@@ -1157,6 +1215,11 @@ export function usePackEditor() {
     corePersonalityText,
     adultExtensionJson,
     memorySeedJson,
+    configJsonText,
+    voiceProfileJson,
+    deepCapsuleText,
+    systemPromptMarkdown,
+    polishPromptMarkdown,
     userIdentityFiles,
     userIdentitiesIndexJson,
     worldKnowledgeTexts,

@@ -21,6 +21,7 @@ import {
   saveDraftSnapshot,
   type PackDraftMeta,
 } from './lib/draftStorage'
+import type { NewPackPresetId } from './lib/newPackPresets'
 
 const AdvancedCreationPanel = defineAsyncComponent(() => import('./components/pack/AdvancedCreationPanel.vue'))
 const SimpleCreationPanel = defineAsyncComponent(() => import('./components/pack/SimpleCreationPanel.vue'))
@@ -32,6 +33,11 @@ const {
   corePersonalityText,
   adultExtensionJson,
   memorySeedJson,
+  configJsonText,
+  voiceProfileJson,
+  deepCapsuleText,
+  systemPromptMarkdown,
+  polishPromptMarkdown,
   userIdentityFiles,
   userIdentitiesIndexJson,
   worldKnowledgeTexts,
@@ -52,6 +58,12 @@ const {
   portraitExtraEntries,
   creatorMessageToOthers,
   creatorMessageMode,
+  authorSummary,
+  authorDetailMarkdown,
+  authorRecommendedRows,
+  authorIncludeSuggestedUi,
+  authorSuggestedBackendsJson,
+  uiConfig,
   folderExportOk,
   manifestRoleId,
   runValidate,
@@ -314,8 +326,8 @@ async function onWorkspaceImportPack(e: Event) {
   }
 }
 
-function onCreateNewPack() {
-  resetToNewPack()
+function onCreateNewPack(presetId: NewPackPresetId) {
+  resetToNewPack(presetId)
   packSession.value = 'new'
   lastMessage.value = String(t('packEditor.rolesWorkspace.createdNew'))
   lastMessageIsError.value = false
@@ -465,6 +477,17 @@ function onCreateNewPack() {
           v-model:settings-text="settingsText"
           v-model:core-personality="corePersonalityText"
           v-model:memory-seed-json="memorySeedJson"
+          v-model:config-json-text="configJsonText"
+          v-model:voice-profile-json="voiceProfileJson"
+          v-model:deep-capsule-text="deepCapsuleText"
+          v-model:system-prompt-markdown="systemPromptMarkdown"
+          v-model:polish-prompt-markdown="polishPromptMarkdown"
+          v-model:creator-message="creatorMessageToOthers"
+          v-model:author-summary="authorSummary"
+          v-model:author-detail-markdown="authorDetailMarkdown"
+          v-model:author-recommended-rows="authorRecommendedRows"
+          v-model:author-include-suggested-ui="authorIncludeSuggestedUi"
+          v-model:author-suggested-backends-json="authorSuggestedBackendsJson"
           v-model:user-identity-files="userIdentityFiles"
           v-model:user-identities-index-json="userIdentitiesIndexJson"
           v-model:world-knowledge-texts="worldKnowledgeTexts"
@@ -474,6 +497,7 @@ function onCreateNewPack() {
           :emotion-summary="emotionImageSummary"
           :portrait-slot-files="portraitSlotFiles"
           :portrait-extra-entries="portraitExtraEntries"
+          :ui-config="uiConfig"
           @portrait-slot-pick="onPortraitSlotPick"
           @portrait-slot-clear="onPortraitSlotClear"
           @portrait-clear-all="clearPortraitSlots"

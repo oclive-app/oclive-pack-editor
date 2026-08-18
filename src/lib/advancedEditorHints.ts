@@ -14,10 +14,10 @@ export const ADV_MANIFEST = [
 ] as const
 
 export const ADV_SETTINGS = [
-  '这一份主要管「对话怎么算出来」：用哪个模型、记忆/情绪等插件走哪条路。和 manifest 分工不同，改错可能导致无法加载或对话异常。',
-  '若你只用本机 Ollama，最常改的是 model（模型名）。云端或远程推理需要按文档配置环境变量与 plugin_backends。',
+  '这一段是 pipeline.ocblueprint 中面向角色创作者开放的理想配置：描述希望怎样生成回复，不选择实际模型。',
+  '实际后端、基础模型、GGUF、本机路径和机器参数始终由 Chat Pro 设置页管理；这里主要调整 inference_profile、记忆与演化等可移植数值。',
   '专家模型路由（expert_routing.json）请在 A.I.Live 主应用「插件与后端管理 → 架构图」中配置，不在本编写器编辑。',
-  '简单创作里有一部分同款选项；这里可以改全量 JSON。不确定时先备份再改。',
+  '简单创作里有一部分同款选项；不确定字段含义时先看问号说明并在导出前运行检查。',
 ] as const
 
 export const ADV_CORE_TXT = [
@@ -61,13 +61,15 @@ export const MANIFEST_KEY_GUIDE: readonly { key: string; say: string }[] = [
 
 /** settings 里常改项说明 */
 export const SETTINGS_KEY_GUIDE: readonly { key: string; say: string }[] = [
-  { key: 'model', say: 'Ollama 模型名（本机对话用）' },
-  { key: 'plugin_backends.llm', say: 'ollama 或 remote 等，决定推理走哪条路' },
-  { key: 'schema', say: '契约版本号，勿随意改' },
+  { key: 'schema_version', say: '兼容层契约版本号，勿随意改' },
+  { key: 'inference_profile.generation', say: '温度、top_p 与理想输出长度' },
+  { key: 'inference_profile.context', say: '最低与理想上下文预算' },
+  { key: 'inference_profile.reasoning', say: '即时、自适应或深度推理倾向' },
+  { key: 'inference_profile.performance_intent', say: '延迟、均衡或质量优先等可移植意图' },
   { key: 'memory_config / evolution', say: '记忆与演化相关参数' },
   { key: 'identity_binding / interaction_mode', say: '身份与场景绑定、交互模式' },
   { key: 'remote_presence', say: '异地相关默认开关等' },
-  { key: 'plugin_backends.*', say: 'memory / emotion / event / prompt 等插件后端类型' },
+  { key: 'plugin_backends.*（非 LLM）', say: 'memory / emotion / event / prompt 等周边模块后端类型' },
 ]
 
 /** 知识文件 front matter 字段 */
@@ -87,7 +89,7 @@ export type CreatorScopeRow = {
 }
 
 export const MANIFEST_MERGE_NOTE =
-  '与 settings 的关系：门面（id、name、scenes、user_relations 等）主要在 manifest；模型、演化、身份模式、记忆、知识开关等若也在 settings.json 里写了，加载时会按引擎规则与 manifest 合并，冲突时以 settings 侧为准（如 knowledge、model 相关）。'
+  '与蓝图运行段的关系：门面（id、name、scenes、user_relations 等）主要在 manifest；演化、身份模式、记忆、知识开关等若在运行段也有定义，会按引擎规则合并。实际模型与 GGUF 不属于角色门面，由 Chat Pro 设置页统一管理。'
 
 export const MANIFEST_FIELD_SCOPE_GUIDE: readonly CreatorScopeRow[] = [
   {
@@ -169,7 +171,7 @@ export const MANIFEST_FIELD_SCOPE_GUIDE: readonly CreatorScopeRow[] = [
 ]
 
 export const SETTINGS_MERGE_NOTE =
-  '与 manifest 的关系：settings.json 中的 model、identity_binding、evolution、memory_config、knowledge 等会写入合并结果并覆盖 manifest 中对应逻辑；主对话模型名在合并侧常体现为 ollama_model。请与 manifest 分工：门面与人设契约在 manifest，引擎参数多在 settings。'
+  '这里是编写器对 pipeline.ocblueprint 创作者向运行段的兼容视图。identity_binding、evolution、memory_config、knowledge 与 inference_profile 会写入蓝图；模型、GGUF、实际后端和机器参数请在 Chat Pro 设置页管理。'
 
 export const SETTINGS_FIELD_SCOPE_GUIDE: readonly CreatorScopeRow[] = [
   {
@@ -178,9 +180,19 @@ export const SETTINGS_FIELD_SCOPE_GUIDE: readonly CreatorScopeRow[] = [
     scope: '一般保持 1；仅当官方升级说明要求时再改。',
   },
   {
-    field: 'model',
-    meaning: '本机 Ollama 主对话模型名。',
-    scope: '可改为本机 ollama list 中任意已安装模型；与 plugin_backends.llm=remote 时的远程方案二选一逻辑以引擎为准。',
+    field: 'inference_profile.generation',
+    meaning: '角色希望采用的采样方式与理想输出长度。',
+    scope: '只调 temperature、top_p 与输出 token 预算；不填写模型名、GGUF 或本机路径。宿主仍可按安全上限收敛。',
+  },
+  {
+    field: 'inference_profile.context / reasoning',
+    meaning: '角色希望获得的上下文预算与推理强度。',
+    scope: '填写可移植理想值；实际能力取决于 Chat Pro 中选定的模型与当前设备。',
+  },
+  {
+    field: 'inference_profile.performance_intent',
+    meaning: '延迟、均衡、质量及缓存/收敛偏好。',
+    scope: '属于运行意图，不保证每个后端都支持；不得借此指定实际推理后端。',
   },
   {
     field: 'evolution.event_impact_factor',
@@ -231,11 +243,6 @@ export const SETTINGS_FIELD_SCOPE_GUIDE: readonly CreatorScopeRow[] = [
     field: 'autonomous_scene',
     meaning: '虚拟时间推进后是否按规则自动更新角色场景等。',
     scope: '进阶；需对照 README 与场景配置，改错会影响切场景逻辑。',
-  },
-  {
-    field: 'plugin_backends.llm',
-    meaning: '主 LLM 接入：ollama（本机）或 remote（远程 HTTP）。',
-    scope: 'remote 需按文档配置环境变量与协议；否则保持 ollama。',
   },
   {
     field: 'plugin_backends.memory / emotion / event / prompt',

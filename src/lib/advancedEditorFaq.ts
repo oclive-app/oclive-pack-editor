@@ -147,14 +147,27 @@ export const MANIFEST_FAQ: readonly AdvFaqItem[] = [
 
 export const SETTINGS_FAQ: readonly AdvFaqItem[] = [
   {
-    id: 's-model',
-    question: '对话模型想换一个（本机 Ollama），改哪里？',
+    id: 's-inference-profile',
+    question: '想给角色写一套理想推理参数，改哪里？',
     plainExplain:
-      '找 "model" 那一行，改成你在终端里 ollama list 能看到的名字。引号别漏。',
-    beforeCode: `"model": "llama3.2",`,
-    afterCode: `"model": "qwen2.5:latest",`,
-    highlightAfter: ['qwen2.5:latest'],
-    highlightBefore: ['llama3.2'],
+      '在 inference_profile 里填写采样、输出长度、上下文与推理倾向。这些是角色包的可移植理想值；实际后端、模型和 GGUF 始终由 Chat Pro 设置页决定。',
+    beforeCode: `(没有这个对象)`,
+    afterCode: `"inference_profile": {
+  "generation": {
+    "temperature": 0.8,
+    "preferred_output_tokens": 1024,
+    "maximum_output_tokens": 2048
+  },
+  "context": {
+    "minimum_tokens": 8192,
+    "preferred_tokens": 16384
+  },
+  "reasoning": {
+    "mode": "adaptive",
+    "effort": 0.6
+  }
+},`,
+    highlightAfter: ['inference_profile', 'temperature', 'preferred_tokens', 'adaptive'],
   },
   {
     id: 's-evolution',

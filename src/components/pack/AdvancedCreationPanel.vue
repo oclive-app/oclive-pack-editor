@@ -1,13 +1,22 @@
-﻿<script setup lang="ts">
+<script setup lang="ts">
 import { useI18n } from 'vue-i18n'
 import PortraitCatalogEditor from './PortraitCatalogEditor.vue'
 import SceneSimpleEditor from './SceneSimpleEditor.vue'
+import UserIdentitiesEditor from './UserIdentitiesEditor.vue'
 import WorldKnowledgeSimpleEditor from './WorldKnowledgeSimpleEditor.vue'
+import AuthorFileEditor from './AuthorFileEditor.vue'
+import ConfigFileEditor from './ConfigFileEditor.vue'
+import InferenceProfileEditor from './InferenceProfileEditor.vue'
+import PromptsFileEditor from './PromptsFileEditor.vue'
+import UiConfigEditor from './UiConfigEditor.vue'
+import VoiceProfileEditor from './VoiceProfileEditor.vue'
 import type { PortraitSlotId } from '../../lib/portraitCatalog'
 import type { ExtraEmotionUserChoices } from '../../lib/portraitExtraUser'
 import type { SceneEditorEntry } from '../../lib/scenePackUser'
 import type { WorldKnowledgeTexts } from '../../lib/worldKnowledgeUser'
 import type { RolePackTextFile } from '../../lib/exportPack'
+import type { AuthorRecRow } from '../../lib/authorPack'
+import type { UiConfig } from '../../types/uiConfig'
 import {
   CORE_FAQ,
   IMAGES_FAQ,
@@ -37,12 +46,23 @@ const manifestText = defineModel<string>('manifestText', { required: true })
 const settingsText = defineModel<string>('settingsText', { required: true })
 const corePersonality = defineModel<string>('corePersonality', { required: true })
 const memorySeedJson = defineModel<string>('memorySeedJson', { required: true })
+const configJsonText = defineModel<string>('configJsonText', { required: true })
+const voiceProfileJson = defineModel<string>('voiceProfileJson', { required: true })
+const deepCapsuleText = defineModel<string>('deepCapsuleText', { required: true })
+const systemPromptMarkdown = defineModel<string>('systemPromptMarkdown', { required: true })
+const polishPromptMarkdown = defineModel<string>('polishPromptMarkdown', { required: true })
+const creatorMessage = defineModel<string>('creatorMessage', { required: true })
+const authorSummary = defineModel<string>('authorSummary', { required: true })
+const authorDetailMarkdown = defineModel<string>('authorDetailMarkdown', { required: true })
+const authorRecommendedRows = defineModel<AuthorRecRow[]>('authorRecommendedRows', { required: true })
+const authorIncludeSuggestedUi = defineModel<boolean>('authorIncludeSuggestedUi', { required: true })
+const authorSuggestedBackendsJson = defineModel<string>('authorSuggestedBackendsJson', { required: true })
 const userIdentityFiles = defineModel<RolePackTextFile[]>('userIdentityFiles', { required: true })
 const userIdentitiesIndexJson = defineModel<string>('userIdentitiesIndexJson', { required: true })
 const worldKnowledgeTexts = defineModel<WorldKnowledgeTexts>('worldKnowledgeTexts', { required: true })
 const sceneEditorEntries = defineModel<SceneEditorEntry[]>('sceneEditorEntries', { required: true })
 const advancedTab = defineModel<
-  'manifest' | 'settings' | 'core' | 'memory' | 'identities' | 'world' | 'scenes' | 'images'
+  'manifest' | 'settings' | 'core' | 'config' | 'memory' | 'identities' | 'world' | 'scenes' | 'prompts' | 'voice' | 'ui' | 'author' | 'images'
 >('advancedTab', {
   required: true,
 })
@@ -55,16 +75,15 @@ const emit = defineEmits<{
   portraitExtraRemove: [index: number]
 }>()
 
-const TAB_ORDER = ['manifest', 'settings', 'core', 'memory', 'identities', 'world', 'scenes', 'images'] as const
+const TAB_ORDER = ['manifest', 'core', 'config', 'memory', 'identities', 'world', 'prompts', 'voice', 'ui', 'author', 'scenes', 'images'] as const
 const MEMORY_SEED_PLACEHOLDER = '{\n  "schema_version": 1,\n  "memories": [],\n  "extensions": {}\n}'
-const USER_IDENTITIES_INDEX_PLACEHOLDER =
-  '{\n  "schema_version": 1,\n  "default_identity_id": "friend",\n  "identities": {}\n}'
 
 defineProps<{
   emotionSummary: string
   portraitSlotFiles: Partial<Record<PortraitSlotId, File>>
   portraitExtraEntries: import('../../lib/portraitCatalog').PortraitCatalogEntry[]
   manifestRoleId: string
+  uiConfig: UiConfig
 }>()
 
 function onToolbarKeydown(e: KeyboardEvent): void {
@@ -78,7 +97,8 @@ function onToolbarKeydown(e: KeyboardEvent): void {
   }
   e.preventDefault()
   const order = TAB_ORDER
-  const i = order.indexOf(advancedTab.value)
+  const current = advancedTab.value === 'settings' ? 'manifest' : advancedTab.value
+  const i = order.indexOf(current)
   if (i < 0) return
   if (e.key === 'Home') {
     advancedTab.value = order[0]!
@@ -95,25 +115,14 @@ function onToolbarKeydown(e: KeyboardEvent): void {
   }
 }
 
-function addIdentityFile(): void {
-  const used = new Set(userIdentityFiles.value.map((f) => f.path))
-  let i = 1
-  let path = `user_identities/identity_${i}.md`
-  while (used.has(path)) path = `user_identities/identity_${++i}.md`
-  userIdentityFiles.value = [...userIdentityFiles.value, { path, content: '' }]
-}
-
-function removeIdentityFile(index: number): void {
-  userIdentityFiles.value = userIdentityFiles.value.filter((_, i) => i !== index)
-}
 </script>
 
 <template>
   <div>
     <p class="adv-toolbar-lead">
       {{ t("advancedCreation.toolbar.leadPrefix") }}
-      <span class="hint-ico" aria-hidden="true">?</span>{{ t("advancedCreation.toolbar.leadSuffix") }}
       <HelpHint :paragraphs="ADV_OVERVIEW" />
+      {{ t("advancedCreation.toolbar.leadSuffix") }}
     </p>
     <p class="adv-extensions-hint">{{ t('advancedCreation.toolbar.extensionsHint') }}</p>
     <div
@@ -126,49 +135,13 @@ function removeIdentityFile(index: number): void {
       <button
         type="button"
         role="tab"
-        :aria-selected="advancedTab === 'manifest'"
-        :class="{ on: advancedTab === 'manifest' }"
+        :aria-selected="advancedTab === 'manifest' || advancedTab === 'settings'"
+        :class="{ on: advancedTab === 'manifest' || advancedTab === 'settings' }"
         @click="advancedTab = 'manifest'"
       >
         <span class="tab-stack">
           <span class="tab-title">{{ t("advancedCreation.tabs.manifest") }}</span>
-          <span class="tab-file">{{ t('packEditor.rolePack.manifestCard') }}</span>
-        </span>
-      </button>
-      <button
-        type="button"
-        role="tab"
-        :aria-selected="advancedTab === 'identities'"
-        :class="{ on: advancedTab === 'identities' }"
-        @click="advancedTab = 'identities'"
-      >
-        <span class="tab-stack">
-          <span class="tab-title">{{ t("advancedCreation.tabs.identities") }}</span>
-          <span class="tab-file">user_identities/*.md</span>
-        </span>
-      </button>
-      <button
-        type="button"
-        role="tab"
-        :aria-selected="advancedTab === 'memory'"
-        :class="{ on: advancedTab === 'memory' }"
-        @click="advancedTab = 'memory'"
-      >
-        <span class="tab-stack">
-          <span class="tab-title">{{ t("advancedCreation.tabs.memory") }}</span>
-          <span class="tab-file">memory_seed.json</span>
-        </span>
-      </button>
-      <button
-        type="button"
-        role="tab"
-        :aria-selected="advancedTab === 'settings'"
-        :class="{ on: advancedTab === 'settings' }"
-        @click="advancedTab = 'settings'"
-      >
-        <span class="tab-stack">
-          <span class="tab-title">{{ t("advancedCreation.tabs.settings") }}</span>
-          <span class="tab-file">{{ t('packEditor.rolePack.settingsCard') }}</span>
+          <span class="tab-file">pipeline.ocblueprint</span>
         </span>
       </button>
       <button
@@ -180,8 +153,17 @@ function removeIdentityFile(index: number): void {
       >
         <span class="tab-stack">
           <span class="tab-title">{{ t("advancedCreation.tabs.core") }}</span>
-          <span class="tab-file">{{ t("advancedCreation.tabs.coreFile") }}</span>
+          <span class="tab-file">core_personality.txt</span>
         </span>
+      </button>
+      <button type="button" role="tab" :aria-selected="advancedTab === 'config'" :class="{ on: advancedTab === 'config' }" @click="advancedTab = 'config'">
+        <span class="tab-stack"><span class="tab-title">{{ t('advancedCreation.tabs.config') }}</span><span class="tab-file">config.json</span></span>
+      </button>
+      <button type="button" role="tab" :aria-selected="advancedTab === 'memory'" :class="{ on: advancedTab === 'memory' }" @click="advancedTab = 'memory'">
+        <span class="tab-stack"><span class="tab-title">{{ t('advancedCreation.tabs.memory') }}</span><span class="tab-file">memory_seed.json</span></span>
+      </button>
+      <button type="button" role="tab" :aria-selected="advancedTab === 'identities'" :class="{ on: advancedTab === 'identities' }" @click="advancedTab = 'identities'">
+        <span class="tab-stack"><span class="tab-title">{{ t('advancedCreation.tabs.identities') }}</span><span class="tab-file">user_identities/</span></span>
       </button>
       <button
         type="button"
@@ -194,6 +176,18 @@ function removeIdentityFile(index: number): void {
           <span class="tab-title">{{ t("advancedCreation.tabs.world") }}</span>
           <span class="tab-file">knowledge/*.md</span>
         </span>
+      </button>
+      <button type="button" role="tab" :aria-selected="advancedTab === 'prompts'" :class="{ on: advancedTab === 'prompts' }" @click="advancedTab = 'prompts'">
+        <span class="tab-stack"><span class="tab-title">{{ t('advancedCreation.tabs.prompts') }}</span><span class="tab-file">prompts/</span></span>
+      </button>
+      <button type="button" role="tab" :aria-selected="advancedTab === 'voice'" :class="{ on: advancedTab === 'voice' }" @click="advancedTab = 'voice'">
+        <span class="tab-stack"><span class="tab-title">{{ t('advancedCreation.tabs.voice') }}</span><span class="tab-file">voice_profile.json</span></span>
+      </button>
+      <button type="button" role="tab" :aria-selected="advancedTab === 'ui'" :class="{ on: advancedTab === 'ui' }" @click="advancedTab = 'ui'">
+        <span class="tab-stack"><span class="tab-title">{{ t('advancedCreation.tabs.ui') }}</span><span class="tab-file">ui.json</span></span>
+      </button>
+      <button type="button" role="tab" :aria-selected="advancedTab === 'author'" :class="{ on: advancedTab === 'author' }" @click="advancedTab = 'author'">
+        <span class="tab-stack"><span class="tab-title">{{ t('advancedCreation.tabs.author') }}</span><span class="tab-file">author.json</span></span>
       </button>
       <button
         type="button"
@@ -299,23 +293,13 @@ function removeIdentityFile(index: number): void {
         <h2 class="adv-h2"><span>{{ t("advancedCreation.sections.identities.title") }}</span></h2>
         <p class="adv-lead">{{ t("advancedCreation.sections.identities.lead") }}</p>
       </div>
-      <label class="adv-lead" for="user-identities-index">user_identities/index.json</label>
-      <textarea
-        id="user-identities-index"
-        v-model="userIdentitiesIndexJson"
-        class="ta"
-        spellcheck="false"
-        :placeholder="USER_IDENTITIES_INDEX_PLACEHOLDER"
+      <UserIdentitiesEditor
+        v-model:index-json="userIdentitiesIndexJson"
+        v-model:files="userIdentityFiles"
+        :manifest-text="manifestText"
       />
-      <div v-if="userIdentityFiles.length === 0" class="adv-lead">{{ t("advancedCreation.sections.identities.empty") }}</div>
-      <div v-for="(file, index) in userIdentityFiles" :key="index" class="identity-editor-row">
-        <input v-model="file.path" class="text-input" :aria-label="t('advancedCreation.sections.identities.pathLabel')" />
-        <textarea v-model="file.content" class="ta" :aria-label="file.path" />
-        <button type="button" class="secondary-btn" @click="removeIdentityFile(index)">{{ t("advancedCreation.sections.identities.remove") }}</button>
-      </div>
-      <button type="button" class="secondary-btn" @click="addIdentityFile">{{ t("advancedCreation.sections.identities.add") }}</button>
     </section>
-    <section v-show="advancedTab === 'settings'" class="panel adv-single">
+    <section v-show="advancedTab === 'manifest' || advancedTab === 'settings'" class="panel adv-single">
       <div class="adv-section-head">
         <h2 class="adv-h2">
           <span>{{ t("advancedCreation.sections.settings.title") }}</span>
@@ -332,6 +316,7 @@ function removeIdentityFile(index: number): void {
           </ul>
         </details>
       </div>
+      <InferenceProfileEditor v-model:settings-text="settingsText" />
       <textarea v-model="settingsText" spellcheck="false" class="ta" :aria-label="t('packEditor.rolePack.settingsCard')" />
       <div class="adv-dock-stack">
         <details
@@ -389,6 +374,10 @@ function removeIdentityFile(index: number): void {
         class="ta"
         aria-label="core_personality.txt"
       />
+      <div class="creator-message-file">
+        <h3>{{ t('advancedCreation.sections.core.creatorMsgTitle') }} <HelpHint :paragraphs="[String(t('advancedCreation.sections.core.creatorMsgLead'))]" /></h3>
+        <textarea v-model="creatorMessage" rows="4" spellcheck="false" aria-label="creator_message.txt" />
+      </div>
       <div class="adv-dock-stack">
         <details
           class="adv-examples-dock adv-examples-dock--collapsible adv-examples-dock--keypoints"
@@ -433,8 +422,35 @@ function removeIdentityFile(index: number): void {
     <section v-show="advancedTab === 'world'" class="panel adv-single">
       <WorldKnowledgeSimpleEditor v-model="worldKnowledgeTexts" />
     </section>
+    <section v-show="advancedTab === 'config'" class="panel adv-single">
+      <ConfigFileEditor v-model="configJsonText" />
+    </section>
     <section v-show="advancedTab === 'scenes'" class="panel adv-single">
       <SceneSimpleEditor v-model:entries="sceneEditorEntries" />
+    </section>
+    <section v-show="advancedTab === 'prompts'" class="panel adv-single">
+      <PromptsFileEditor
+        v-model:manifest-text="manifestText"
+        v-model:settings-text="settingsText"
+        v-model:deep-capsule-text="deepCapsuleText"
+        v-model:system-prompt-markdown="systemPromptMarkdown"
+        v-model:polish-prompt-markdown="polishPromptMarkdown"
+      />
+    </section>
+    <section v-show="advancedTab === 'voice'" class="panel adv-single">
+      <VoiceProfileEditor v-model="voiceProfileJson" />
+    </section>
+    <section v-show="advancedTab === 'ui'" class="panel adv-single">
+      <UiConfigEditor :ui-config="uiConfig" />
+    </section>
+    <section v-show="advancedTab === 'author'" class="panel adv-single">
+      <AuthorFileEditor
+        v-model:summary="authorSummary"
+        v-model:detail-markdown="authorDetailMarkdown"
+        v-model:rows="authorRecommendedRows"
+        v-model:include-suggested-ui="authorIncludeSuggestedUi"
+        v-model:suggested-backends-json="authorSuggestedBackendsJson"
+      />
     </section>
     <section v-show="advancedTab === 'images'" class="panel adv-single">
       <div class="adv-section-head">
@@ -535,18 +551,6 @@ code {
   background: color-mix(in srgb, var(--fluent-accent-subtle) 30%, transparent);
   font-size: 0.78rem;
   line-height: 1.45;
-  color: var(--fluent-text-secondary);
-}
-.hint-ico {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.05rem;
-  height: 1.05rem;
-  border-radius: 50%;
-  border: 1px solid color-mix(in srgb, var(--fluent-border-control) 85%, transparent);
-  font-size: 0.62rem;
-  font-weight: 700;
   color: var(--fluent-text-secondary);
 }
 .adv-section-head {
@@ -1085,6 +1089,25 @@ code {
 .ta--short {
   min-height: 4.5rem;
   font-family: var(--fluent-font);
+}
+.creator-message-file {
+  margin: 1rem 0;
+  padding: .85rem;
+  border: 1px solid var(--fluent-border-stroke);
+  border-radius: var(--fluent-radius-lg);
+  background: color-mix(in srgb, var(--fluent-accent) 5%, transparent);
+}
+.creator-message-file h3 {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  margin: 0 0 .55rem;
+  font-size: .9rem;
+}
+.creator-message-file textarea {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
 }
 @media (max-width: 860px) {
   .knowledge-meta {

@@ -97,6 +97,22 @@ describe('simpleCreation', () => {
     expect(JSON.parse(sOut).knowledge).toEqual({ enabled: false, glob: 'knowledge/custom/*.md' })
   })
 
+  it('keeps model selection in Chat Pro and exports only the Ollama fallback', () => {
+    const form = defaultSimpleSettingsForm()
+    const out = JSON.parse(applySimpleSettingsToJson(JSON.stringify({
+      model: 'local-model',
+      ollama_model: 'another-local-model',
+      plugin_backends: {
+        llm: 'remote',
+        directory_plugins: { llm: 'com.example.private-runtime' },
+      },
+    }), form, { enabled: true, glob: 'knowledge/**/*.md' }))
+    expect(out.model).toBeUndefined()
+    expect(out.ollama_model).toBeUndefined()
+    expect(out.plugin_backends.llm).toBe('ollama')
+    expect(out.plugin_backends.directory_plugins?.llm).toBeUndefined()
+  })
+
   it('settings evolution personality_source and max_change_per_event roundtrip', () => {
     const base = JSON.stringify({
       evolution: {

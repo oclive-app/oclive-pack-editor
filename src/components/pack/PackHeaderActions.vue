@@ -69,6 +69,7 @@ const { t } = useI18n()
 <style scoped>
 .pack-header-actions {
   display: inline-flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.4rem;
 }

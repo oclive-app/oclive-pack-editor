@@ -94,26 +94,9 @@ const emit = defineEmits<{
         />
       </div>
 
-      <div class="form-row two">
-        <div>
-          <label for="f-brain-mode-base">{{ t('simpleCreation.settings.brain.modeLabel') }}</label>
-          <select id="f-brain-mode-base" v-model="simpleS.pluginLlm">
-            <option value="ollama">{{ t('simpleCreation.settings.brain.modes.ollama') }}</option>
-            <option value="remote">{{ t('simpleCreation.settings.brain.modes.remote') }}</option>
-            <option value="directory">{{ t('simpleCreation.settings.brain.modes.directory') }}</option>
-          </select>
-        </div>
-        <div>
-          <label for="f-model-base">{{ t('simpleCreation.settings.brain.ollamaModelLabel') }}</label>
-          <input
-            id="f-model-base"
-            v-model="simpleS.model"
-            type="text"
-            placeholder="qwen2.5:7b"
-            autocomplete="off"
-          />
-        </div>
-      </div>
+      <p class="runtime-owner-note">
+        {{ t('simpleCreation.base.runtimeOwnerNote') }}
+      </p>
 
       <details class="simple-faq-details">
         <summary class="simple-faq-sum">{{ t('simpleCreation.base.faqTitle') }}</summary>
@@ -166,6 +149,17 @@ const emit = defineEmits<{
   backdrop-filter: blur(9px) saturate(106%);
   -webkit-backdrop-filter: blur(9px) saturate(106%);
   box-shadow: var(--fluent-shadow-card);
+}
+
+.runtime-owner-note {
+  margin: 0.85rem 0 0;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--fluent-border-stroke);
+  border-radius: var(--fluent-radius-md);
+  color: var(--fluent-text-secondary);
+  background: color-mix(in srgb, var(--fluent-accent) 7%, transparent);
+  font-size: 0.8125rem;
+  line-height: 1.5;
 }
 .base-panel {
   border-left: 3px solid var(--rail-accent-editor);

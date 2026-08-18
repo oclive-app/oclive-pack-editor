@@ -1,5 +1,5 @@
-import { invoke } from '@tauri-apps/api/core'
-import { confirm, open } from '@tauri-apps/plugin-dialog'
+import { invoke, isTauri } from '@tauri-apps/api/core'
+import { open } from '@tauri-apps/plugin-dialog'
 import {
   buildRolePackFiles,
   collectRolePackBinaryFilesForExport,
@@ -10,7 +10,7 @@ import {
 import { duplicateRoleFolderConfirmMessage } from './exportErrorMessages'
 
 export function isTauriRuntime(): boolean {
-  return typeof window !== 'undefined' && '__TAURI__' in window
+  return typeof window !== 'undefined' && isTauri()
 }
 
 /** Tauri：检测 roles 根下是否已有 `{roleId}/` 文件夹。 */
@@ -30,9 +30,10 @@ export async function confirmOverwriteExistingRoleDir(
   const exists = await rolePackDirExists(rolesRoot, roleId)
   if (!exists) return true
   const message = duplicateRoleFolderConfirmMessage(roleId)
-  if (isTauriRuntime()) {
-    return confirm(message, { title: '覆盖已有角色包？' })
-  }
+  // Use the WebView's native confirmation in both browser and desktop builds.
+  // The dialog plugin is still used for selecting a folder, but routing this
+  // confirmation through it made overwrite fail when the desktop capability
+  // was not available at runtime.
   return window.confirm(message)
 }
 

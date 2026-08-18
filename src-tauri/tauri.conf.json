@@ -33,11 +33,5 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
-  },
-  "plugins": {
-    "dialog": {
-      "open": true,
-      "confirm": true
-    }
   }
 }

@@ -14,6 +14,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:unit": "vitest run",
+    "test:character-cards": "vitest run src/lib/characterCardImport.test.ts src/lib/characterCardFormatMatrix.test.ts --reporter=verbose",
+    "audit:character-cards": "vitest run src/lib/characterCardCorpusAudit.test.ts --reporter=verbose",
     "test:e2e": "playwright test",
     "test:e2e:install": "playwright install",
     "tauri": "tauri",

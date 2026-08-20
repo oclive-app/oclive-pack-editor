@@ -1,6 +1,6 @@
-# oclive-pack-editor
+# A.I.Live 角色包编写器
 
-独立 **角色包编写器**（Vite + Vue 3 + TypeScript + **Tauri 2** 桌面壳）：面向创作者的 **简单创作** 流程（人设、立绘、世界观 → 导出 `.ocpak` / 写入 `roles/`），并保留 **高级创作**（manifest / settings / 场景 JSON 等）。产物与 **oclivenewnew** 运行时兼容；**不包含**对话引擎源码。
+独立 **A.I.Live 角色包编写器**（仓库名：`oclive-pack-editor`，Vite + Vue 3 + TypeScript + **Tauri 2** 桌面壳）：面向创作者的 **简单创作** 流程（人设、立绘、世界观 → 导出 `.ocpak` / 写入 `roles/`），并提供按真实角色包文件组织的 **高级创作**。产物与 **oclivenewnew** 运行时兼容；**不包含**对话引擎源码。
 
 [![CI](https://github.com/linkaiheng2233-cyber/oclive-pack-editor/actions/workflows/ci.yml/badge.svg)](https://github.com/linkaiheng2233-cyber/oclive-pack-editor/actions/workflows/ci.yml)
 
@@ -16,7 +16,7 @@
 | **专家模型路由**（`blueprint/includes/expert_routing.json`）、架构图 **`groups`**、蓝图 **`includes[]`** 合并 | **A.I.Live（oclivenewnew）** → 插件与后端管理 → 架构图 |
 | 对话、记忆持久化、`load_role` 最终校验 | **A.I.Live** |
 
-**保存注意事项**：侧栏「角色包」保存时会更新编写器管理的 `meta` / slot 字段，同时保留未知 meta 字段、多实例 `slot_registry` 以及 `includes`、`groups`、`expert_overlay`、`runtime_config`（避免冲掉主应用写入的扩展字段）。v3 / dual-core 蓝图当前不进入编写器编辑流程；请在主应用完成配置后使用编写器之外的工具管理，避免误作 v2 导入。
+**保存注意事项**：侧栏「角色包」保存时会更新编写器管理的 `meta` / slot 字段，同时保留未知 meta 字段、多实例 `slot_registry` 以及 `includes`、`groups`、`expert_overlay`、`runtime_config`、v4 `extensions` 和它们引用的安全载荷文件。v3 / dual-core 蓝图当前不进入编写器编辑流程；v2 会原版本往返，Stable v4 是新包默认。
 
 **专家路由配置**：请在 **A.I.Live** 主应用配置（`blueprint/includes/expert_routing.json`）；本编写器不编辑该文件。详见 [creator-docs/ROLE_PACK_EDITOR.md](./creator-docs/ROLE_PACK_EDITOR.md)。
 
@@ -24,21 +24,21 @@
 
 | 项目 | 说明 |
 |------|------|
-| **本仓库** | 产出 **`pipeline.ocblueprint`**（v2 SSOT）、`core_personality.txt`、可选只读 **`memory_seed.json`**、**`user_identities/*.md`**、**`knowledge/**/*.md`**（多文件世界观）、占位场景、`assets/images/` 情绪图等；可选 **`prompts/reply_quality_anchor.md`**、**`creator_message.txt`**（创作者公告；**oclivenewnew 运行时一般不读取**，仅部分归档工具展示） |
+| **本仓库** | 产出 **`pipeline.ocblueprint`**（新包 Stable v4；v2 兼容）、`core_personality.txt`、可选只读 **`memory_seed.json`**、**`user_identities/*.md`**、**`knowledge/**/*.md`**、场景、情绪资源、`config.json`、`ui.json`、`author.json`、`voice_profile.json` 与已知 `prompts/` 文件；未知安全文件和未来字段在导入导出时保留 |
 | **oclivenewnew** | 加载、校验与对话；契约原文在其仓库 **`creator-docs/`** 与 **`roles/README_MANIFEST.md`** |
 
 ## 与「插件市场 / 模块条目 / Profile（特征码）」的边界
 
-编写器只负责**角色包内容**（v2 蓝图 / 知识 / 素材 / 导出），不负责插件市场与一键部署。
+编写器只负责**角色包内容与蓝图编辑**（Stable v4 / v2 兼容、知识、素材、导出），不负责插件市场与一键部署。
 
 - **插件市场条目（`type: "plugin" | "module" | "profile"`）**：由 `oclivenewnew` 的「插件与后端管理」负责同步索引、安装依赖插件、权限确认与应用后端覆盖。
 - **Profile（特征码/一键部署）**：属于运行时侧的「环境配置 + 依赖声明」能力；编写器不解析/不应用 Profile，只在角色包里提供 `plugin_backends` 等字段供运行时读取。
 
 **性格档案**：本编写器编辑包内 **核心性格档案**（`core_personality.txt`）与 **`evolution`**（含 **`personality_source`**、`max_change_per_event`）。若选用 **`profile`**，运行时的 **可变性格档案**由 oclive 在数据库中维护，**不可**在包内手写；设计说明见 oclivenewnew **[personality-archive-notes.md](https://github.com/linkaiheng2233-cyber/oclivenewnew/blob/main/docs/personality-archive-notes.md)**，思路变化见 **[design-axis-evolution.md](https://github.com/linkaiheng2233-cyber/oclivenewnew/blob/main/docs/design-axis-evolution.md)**。
 
-**版本对齐**：`src/lib/hostRuntimeVersion.ts` 中的 **`HOST_RUNTIME_VERSION`** 应与 **oclivenewnew** `distros/desktop-tauri/Cargo.toml` 的 **`version`** 一致；导出前校验会检查 **`meta.min_runtime_version`** 与 v2 蓝图契约（见 [PACK_VERSIONING.md](https://github.com/linkaiheng2233-cyber/oclivenewnew/blob/main/creator-docs/role-pack/PACK_VERSIONING.md)）。
+**版本对齐**：`src/lib/hostRuntimeVersion.ts` 中的 **`HOST_RUNTIME_VERSION`** 应与 **oclivenewnew** `distros/desktop-tauri/Cargo.toml` 的 **`version`** 一致；导出前校验会检查 **`meta.min_runtime_version`** 并按 schema 精确分派 v2 / v3 / v4 蓝图契约（见 [PACK_VERSIONING.md](https://github.com/linkaiheng2233-cyber/oclivenewnew/blob/main/creator-docs/role-pack/PACK_VERSIONING.md)）。
 
-桌面版可从开始页选择 **roles 根**，加载其中的 v2 角色包，再通过同一套简单/高级创作界面修改；写回统一经过导出预检，不再保留旧的第二套磁盘编辑面板。
+桌面版可从开始页选择 **roles 根**，加载其中的 v2 / Stable v4 角色包，再通过同一套简单/高级创作界面修改；写回统一经过导出预检，不再保留旧的第二套磁盘编辑面板。
 
 编写器只负责创作与静态校验。对话、角色反馈和插件进程执行属于运行时边界；请把导出的角色包放入 A.I.Live 后进行动态联调。
 
@@ -75,18 +75,21 @@
 ## 创作模式
 
 - **简单创作**
-  - **基础**：**核心性格档案**长文（写入 `core_personality.txt`）与 **情绪图片**（导出至 `assets/images/`，文件名需与 oclive 情绪资源命名一致）。
+  - **基础**：**核心性格档案**长文（写入 `core_personality.txt`）、默认启用的通用 **回复表现优化**（可打开开关整段自定义）与 **情绪图片**（导出至 `assets/images/`，文件名需与 oclive 情绪资源命名一致）。回复优化写入 Stable v4 `runtime_config.reply_quality_anchor`（v2 为兼容字段），作为独立区块紧邻不可覆盖的内核硬约束；物理顺序服从运行时前缀缓存布局，不与核心人设混写。
   - **进阶**（可折叠）：场景、用户身份、**世界观**（`knowledge/world.md`）、**事件影响系数**、**人格来源**（`evolution.personality_source`）、**单轮可变档案步长**（`max_change_per_event`）等，对应 blueprint **meta** 与运行时视图字段。
-  - **对话推理（大脑）**（进阶 · 引擎设置）：与 **oclive-launcher** 对齐，选择 **本机 Ollama**（填写 `model`）或 **云端 Remote LLM**（包内 `slot_registry` 中 llm 槽为 remote）；云端侧车 URL 在启动 oclive 时由启动器注入 `OCLIVE_REMOTE_LLM_URL`，协议见 oclivenewnew `REMOTE_PLUGIN_PROTOCOL.md`。记忆 / 情绪 / 事件 / Prompt 四类后端仍在同页「其他插件后端」中配置。
-- **高级创作**：分标签编辑 **角色门面 / 运行时 JSON 视图**、**core_personality.txt**、只读初始记忆 **`memory_seed.json`**、用户身份模板 **`user_identities/*.md` + `index.json`**、**知识 Markdown（`knowledge/*.md`）**、**情绪图片列表**；适合插件字段、多身份与完整包结构。初始记忆只随包分发，不等同于运行时生成的长期/短期记忆。
+  - **推理归属**：简单包只保留 **Ollama 兜底**，不写入当前电脑的模型名、GGUF 或运行参数；实际后端和基础模型统一在 **Chat Pro 设置页**选择。
+- **高级创作**：按实际文件导航编辑 **`pipeline.ocblueprint`**、`core_personality.txt` / `creator_message.txt`、`config.json`、`memory_seed.json`、`user_identities/`、`knowledge/`、`scenes/`、`prompts/`、`voice_profile.json`、`ui.json`、`author.json` 与情绪资源。Stable v4 的 **理想推理配置**只表达可移植采样、预算、推理强度和性能意图；不重复 Chat Pro 的模型/GGUF 设置。
 - **世界观与知识文件（高级 · 世界观）**
   - 支持多个 **`knowledge/*.md`**；简单模式下的「世界观」仍与 **`knowledge/world.md`** 同步。
   - **Front matter 表单**：`id`、`tags`、`scenes`、`event_hints`、`weight`，无需手写 YAML；正文与元数据分离编辑。
   - **运行全部检查** 会附带知识级校验（例如路径、`id` 重复等），与 manifest/settings 结果合并展示。
   - **知识强调预览 / 调参助手**（仅编辑器内近似）：输入关键词可预览命中与原因、正文片段；可选「预览条件：场景」与严格场景开关；**临时权重滑杆**只影响预览排序，满意后再写入真实 `weight`。运行时召回以 oclivenewnew 为准，预览用于创作调参。
 - **导入角色包**：支持 **`.zip` / `.ocpak`**，解析后回填上述内容，便于在已有包上修改或另存为新包。导入后会保留编写器不直接编辑的安全文件与蓝图扩展字段，避免再次导出时静默丢失。导入时会校验 zip 内路径：拒绝含 `..` / `.` 段的非法路径（防 zip-slip）；情绪图仅接受 `{roleId}/assets/images/` 下**单层**文件名（不接受子目录）。
+- **转换外部角色卡**：开始页可选择 Character Card / Tavern **V1、V2、V3 `.json`**，带分字段旧式 V1 或 `chara` / `ccv3` 元数据的 **`.png` / `.apng`**，以及 V3 **`.charx`**。编写器提取名称、昵称、作者、人设、场景、`first_mes`、`alternate_greetings`、`mes_example`、`character_book`，并把本地可解析的 V3 主图和情绪图映射到 OCLive 立绘目录；CHARX 中实际图片格式与声明扩展名不一致时以安全魔数识别为准，`x-risu-asset` 静态图片作为需复核的额外立绘保留。转换完成后可直接选择进入**简单创造**或**高级创作**，两者编辑同一份草稿。转换报告显示在简单创造顶部，规范 JSON 保存在 `imports/original_character_card.json`，V3 PNG/APNG/CHARX 原文件也会保存在 `imports/`。外部 `system_prompt` / `post_history_instructions` 只保存为 `prompts/system.md` 参考，不会直接接管运行时；`group_only_greetings` 与无直接等价行为的高级知识规则只保留供复核。转换器不联网抓取远程资源，不执行代码或模型资产，不翻译文本、不生成 R18 扩展，也不启用平台私有 `extensions`。CHARX 会拒绝不安全路径、过多条目和超出限制的解压内容。
 
-**简单创作已覆盖（表单 → JSON）**：`manifest` 侧 `id` / `name` / `version` / `author` / `description` / `min_runtime_version`（可选）/ `scenes` / `default_personality` / 单槽 `user_relations` + `default_relation` / **`knowledge.enabled` 与 `knowledge.glob`**（与 `settings.knowledge` 同步写入，合并时 settings 优先）；`settings` 侧 `schema_version` / `model` / `evolution.event_impact_factor` / **`evolution.personality_source`** / **`evolution.max_change_per_event`**（`ai_analysis_interval`、`max_total_change` 等其余演化字段保留原 JSON）/ `identity_binding` / `interaction_mode` / `memory_config.scene_weight_multiplier`（`topic_weights` 等保留）/ `remote_presence.default_enabled` / `plugin_backends`。**仍须高级创作或手写 JSON 的典型项**：多身份并存、`life_trajectory` / `life_schedule`、`dev_only`、`autonomous_scene`、逐场景 `topic_weights` 精调等（见 oclivenewnew `PACK_VERSIONING.md`）。
+**首发与内测边界**：基础角色包编辑、Character Card 转换和 `.ocpak` 导出属于首发范围；成人扩展与 `voice_profile.json` 的编辑入口已经存在，但真实内容效果、撤销/错误隔离、语音设备与长时间播报体验继续在内测推进，不阻塞基础版本发布。
+
+**简单创作已覆盖（表单 → JSON）**：角色 `id` / `name` / `version` / `author` / `description` / `min_runtime_version`（可选）/ `scenes` / `default_personality` / 单槽 `user_relations` + `default_relation` / **`knowledge.enabled` 与 `knowledge.glob`**；运行部分覆盖 `schema_version` / `evolution.event_impact_factor` / **`evolution.personality_source`** / **`evolution.max_change_per_event`** / `identity_binding` / `interaction_mode` / `memory_config.scene_weight_multiplier` / `remote_presence.default_enabled` 以及非 LLM 插件后端。简单模式会删除旧的 `model` / `ollama_model` 并固定 `plugin_backends.llm = ollama` 作为兜底，避免复制 Chat Pro 设置。**仍须高级创作的典型项**：理想推理配置、多身份并存、`life_trajectory` / `life_schedule`、`dev_only`、`autonomous_scene`、逐场景 `topic_weights` 精调等。
 
 编写器 **不包含**对话引擎本体，也不启动运行时、插件或任意外部进程。动态行为以角色包写入运行时 **roles 根** 后，由完整 A.I.Live 进程加载测试为准。
 
@@ -101,7 +104,7 @@ npm run dev:browser  # 仅浏览器：Vite + 自动打开浏览器
 npm run dev          # 仅启动 Vite（不自动开浏览器；供 Tauri 子进程或手动打开 http://localhost:5173）
 ```
 
-1. 可选 **「运行全部检查」** 查看 v2 蓝图契约一致性。  
+1. 可选 **「运行全部检查」** 查看 Stable v4 / v2 兼容蓝图契约一致性。
 2. 勾选 **「导出前校验包内容」**（默认开启）：关闭后可在未通过检查时仍导出 zip 或写入文件夹，便于半成品或插件扩展包到 oclive 中实测。  
 3. **导出** `.ocpak` / `.zip`（浏览器下载到本机任意位置），或使用 **「写入文件夹（自选 roles 根目录）」**（Tauri 或支持 File System Access 的 Chromium）。  
 4. 将解压或写入得到的 **`{roleId}/`** 文件夹放进运行时的 **roles 根**（与 zip 内结构一致：**不要**多套一层目录）。  
@@ -134,7 +137,9 @@ npm run tauri:build  # 生产安装包 / 可执行文件（需完整 Rust + 平�
 | `npm run dev` | 仅起 Vite（无 `--open`；`tauri dev` 的前置命令与此相同，避免双开浏览器） |
 | `npm run dev:browser` | 浏览器开发 + 自动打开 `localhost:5173` |
 | `npm run build` | 生产构建（`dist/`，供 Tauri `distDir` 使用） |
-| `npm test` | Vitest（**186** 项：导入/导出 roundtrip、记忆与身份模板、路径安全、v2 校验与包检查） |
+| `npm test` | Vitest（导入/导出 roundtrip、记忆与身份模板、路径安全、Stable v4 / v2 兼容校验与包检查） |
+| `npm run test:character-cards` | 运行不含第三方正文的 Character Card 自动化矩阵：规范容器、字段映射、已观察平台方言及恶意/损坏输入；生成式中性夹具进入普通本地测试 |
+| `npm run audit:character-cards` | 对 `OCLIVE_CHARACTER_CARD_CORPUS` 指定的本机样本目录执行离线转换巡检；可用 `OCLIVE_CHARACTER_CARD_AUDIT_REPORT` 输出不含角色正文的 JSON 结构报告。第三方样本不进入仓库或普通 CI |
 | `npm run test:e2e` | Playwright 冒烟（需先 `npm run build`；首次可执行 `npm run test:e2e:install` 安装浏览器） |
 | `npm run tauri:dev` | Tauri 开发窗口 |
 | `npm run tauri:build` | Tauri 打包（安装包 / 可执行文件） |

@@ -57,6 +57,9 @@ export function validateSettingsTopLevelKeys(settings: Record<string, unknown>):
   const errors: string[] = []
   for (const key of Object.keys(settings)) {
     if (key.startsWith('_')) continue
+    // 编写器内部把 Stable v4 runtime_config 拆成 settings 形状编辑；该键
+    // 导出时回到 pipeline.ocblueprint，不属于 legacy settings.json 白名单。
+    if (key === 'inference_profile') continue
     if (!SETTINGS_KEYS.has(key)) errors.push(msg('settings.json', key))
   }
   return errors

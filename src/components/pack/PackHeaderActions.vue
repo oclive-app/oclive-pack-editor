@@ -14,6 +14,7 @@ const emit = defineEmits<{
   runValidate: []
   saveDraft: []
   exportOcpak: []
+  exportOcpakAs: []
   exportFolder: []
 }>()
 
@@ -51,6 +52,14 @@ const { t } = useI18n()
       {{ t('packEditor.headerActions.exportOcpak') }}
     </button>
     <button
+      type="button"
+      class="pha-btn pha-btn--export-as"
+      :title="String(t('packEditor.headerActions.exportOcpakAsTitle'))"
+      @click="emit('exportOcpakAs')"
+    >
+      {{ t('packEditor.headerActions.exportOcpakAs') }}
+    </button>
+    <button
       v-if="folderExportOk"
       type="button"
       class="pha-btn pha-btn--export-folder"
@@ -69,6 +78,7 @@ const { t } = useI18n()
 <style scoped>
 .pack-header-actions {
   display: inline-flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.4rem;
 }
@@ -133,6 +143,10 @@ const { t } = useI18n()
 
 .pha-btn--export-folder {
   border-color: color-mix(in srgb, var(--fluent-accent) 35%, var(--pack-glass-border));
+}
+
+.pha-btn--export-as {
+  border-color: color-mix(in srgb, var(--rail-accent-editor) 35%, var(--pack-glass-border));
 }
 
 .pha-check {

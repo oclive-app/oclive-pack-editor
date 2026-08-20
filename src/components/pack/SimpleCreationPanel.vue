@@ -15,6 +15,10 @@ import type { SimpleManifestForm, SimpleSettingsForm } from '../../lib/simpleCre
 import type { PortraitCatalogEntry, PortraitSlotId } from '../../lib/portraitCatalog'
 import type { ExtraEmotionUserChoices } from '../../lib/portraitExtraUser'
 import type { WorldKnowledgeTexts } from '../../lib/worldKnowledgeUser'
+import type {
+  CharacterCardConversionReport,
+  CharacterCardReportCode,
+} from '../../lib/characterCardImport'
 
 const { t } = useI18n()
 
@@ -27,6 +31,7 @@ defineProps<{
   emotionSummary: string
   portraitSlotFiles: Partial<Record<PortraitSlotId, File>>
   portraitExtraEntries: PortraitCatalogEntry[]
+  characterCardImportReport: CharacterCardConversionReport | null
 }>()
 
 const corePersonality = defineModel<string>('corePersonality', { required: true })
@@ -40,6 +45,10 @@ const emit = defineEmits<{
   portraitExtraRemove: [index: number]
   portraitExtraApplyChoices: [index: number, choices: ExtraEmotionUserChoices, file?: File]
 }>()
+
+function reportItem(code: CharacterCardReportCode): string {
+  return String(t(`simpleCreation.characterCardImport.items.${code}`))
+}
 </script>
 
 <template>
@@ -53,6 +62,41 @@ const emit = defineEmits<{
     <p v-if="portraitPlaceholderWarning" class="sync-warn" role="status">
       {{ t('simpleCreation.portraits.placeholderWarning') }}
     </p>
+
+    <details v-if="characterCardImportReport" class="conversion-report" open>
+      <summary>
+        {{ t('simpleCreation.characterCardImport.title') }}
+        <span class="conversion-format">
+          {{ t(`simpleCreation.characterCardImport.formats.${characterCardImportReport.sourceFormat}`) }}
+        </span>
+      </summary>
+      <p class="conversion-source">
+        {{
+          t('simpleCreation.characterCardImport.source', {
+            file: characterCardImportReport.sourceFileName,
+            roleId: characterCardImportReport.roleId,
+          })
+        }}
+      </p>
+      <div class="conversion-groups">
+        <section>
+          <h3>{{ t('simpleCreation.characterCardImport.convertedTitle') }}</h3>
+          <ul>
+            <li v-for="code in characterCardImportReport.converted" :key="`converted-${code}`">
+              {{ reportItem(code) }}
+            </li>
+          </ul>
+        </section>
+        <section v-if="characterCardImportReport.review.length">
+          <h3>{{ t('simpleCreation.characterCardImport.reviewTitle') }}</h3>
+          <ul>
+            <li v-for="code in characterCardImportReport.review" :key="`review-${code}`">
+              {{ reportItem(code) }}
+            </li>
+          </ul>
+        </section>
+      </div>
+    </details>
 
     <section class="panel base-panel">
       <div class="section-title-row">
@@ -94,26 +138,40 @@ const emit = defineEmits<{
         />
       </div>
 
-      <div class="form-row two">
-        <div>
-          <label for="f-brain-mode-base">{{ t('simpleCreation.settings.brain.modeLabel') }}</label>
-          <select id="f-brain-mode-base" v-model="simpleS.pluginLlm">
-            <option value="ollama">{{ t('simpleCreation.settings.brain.modes.ollama') }}</option>
-            <option value="remote">{{ t('simpleCreation.settings.brain.modes.remote') }}</option>
-            <option value="directory">{{ t('simpleCreation.settings.brain.modes.directory') }}</option>
-          </select>
+      <div class="reply-quality-box">
+        <div class="reply-quality-heading">
+          <div class="label-hint-row">
+            <span class="field-label">{{ t('simpleCreation.base.replyQualityTitle') }}</span>
+            <HelpHint :paragraphs="[String(t('simpleCreation.base.replyQualityHelp'))]" />
+          </div>
+          <label class="reply-quality-switch">
+            <input v-model="simpleS.customReplyQualityEnabled" type="checkbox" />
+            <span>{{ t('simpleCreation.base.replyQualityCustom') }}</span>
+          </label>
         </div>
-        <div>
-          <label for="f-model-base">{{ t('simpleCreation.settings.brain.ollamaModelLabel') }}</label>
-          <input
-            id="f-model-base"
-            v-model="simpleS.model"
-            type="text"
-            placeholder="qwen2.5:7b"
-            autocomplete="off"
-          />
-        </div>
+        <p class="reply-quality-desc">
+          {{
+            t(
+              simpleS.customReplyQualityEnabled
+                ? 'simpleCreation.base.replyQualityCustomDesc'
+                : 'simpleCreation.base.replyQualityDefaultDesc',
+            )
+          }}
+        </p>
+        <textarea
+          v-if="simpleS.customReplyQualityEnabled"
+          id="reply-quality-ta"
+          v-model="simpleS.replyQualityAnchor"
+          rows="14"
+          class="txt reply-quality-textarea"
+          spellcheck="false"
+          :aria-label="String(t('simpleCreation.base.replyQualityTextareaLabel'))"
+        />
       </div>
+
+      <p class="runtime-owner-note">
+        {{ t('simpleCreation.base.runtimeOwnerNote') }}
+      </p>
 
       <details class="simple-faq-details">
         <summary class="simple-faq-sum">{{ t('simpleCreation.base.faqTitle') }}</summary>
@@ -156,6 +214,55 @@ const emit = defineEmits<{
   border-radius: var(--fluent-radius-lg);
   line-height: 1.45;
 }
+.conversion-report {
+  margin: 0 0 1rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid color-mix(in srgb, var(--fluent-accent) 48%, var(--fluent-border-stroke));
+  border-radius: var(--fluent-radius-lg);
+  background: color-mix(in srgb, var(--fluent-accent) 8%, var(--fluent-bg-card));
+}
+.conversion-report summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+.conversion-format {
+  margin-left: 0.4rem;
+  padding: 0.12rem 0.4rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--fluent-accent) 14%, transparent);
+  color: var(--fluent-text-secondary);
+  font-size: 0.72rem;
+  font-weight: 500;
+}
+.conversion-source {
+  margin: 0.55rem 0;
+  color: var(--fluent-text-secondary);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+.conversion-groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: 0.75rem;
+}
+.conversion-groups section {
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--fluent-border-stroke);
+  border-radius: var(--fluent-radius-md);
+  background: color-mix(in srgb, var(--fluent-bg-card) 88%, transparent);
+}
+.conversion-groups h3 {
+  margin: 0 0 0.35rem;
+  font-size: 0.8rem;
+}
+.conversion-groups ul {
+  margin: 0;
+  padding-left: 1.1rem;
+  color: var(--fluent-text-secondary);
+  font-size: 0.76rem;
+  line-height: 1.5;
+}
 .base-panel,
 .extra-panel {
   margin-top: 1rem;
@@ -166,6 +273,67 @@ const emit = defineEmits<{
   backdrop-filter: blur(9px) saturate(106%);
   -webkit-backdrop-filter: blur(9px) saturate(106%);
   box-shadow: var(--fluent-shadow-card);
+}
+
+.runtime-owner-note {
+  margin: 0.85rem 0 0;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--fluent-border-stroke);
+  border-radius: var(--fluent-radius-md);
+  color: var(--fluent-text-secondary);
+  background: color-mix(in srgb, var(--fluent-accent) 7%, transparent);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+.reply-quality-box {
+  margin-top: 0.85rem;
+  padding: 0.75rem;
+  border: 1px solid var(--fluent-border-stroke);
+  border-radius: var(--fluent-radius-md);
+  background: color-mix(in srgb, var(--fluent-accent) 5%, var(--fluent-bg-card));
+}
+.reply-quality-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+}
+.reply-quality-heading .label-hint-row {
+  margin-bottom: 0;
+}
+.field-label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--fluent-text-primary);
+}
+.reply-quality-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8125rem;
+  color: var(--fluent-text-secondary);
+  cursor: pointer;
+}
+.reply-quality-desc {
+  margin: 0.45rem 0 0;
+  color: var(--fluent-text-secondary);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+.reply-quality-textarea {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-width: min(16rem, 100%);
+  height: clamp(18rem, 42vh, 32rem);
+  min-height: 8rem !important;
+  margin-top: 0.65rem;
+  box-sizing: border-box;
+  font-family: var(--fluent-font-mono, monospace) !important;
+  line-height: 1.6;
+  overflow: auto;
+  resize: both;
 }
 .base-panel {
   border-left: 3px solid var(--rail-accent-editor);

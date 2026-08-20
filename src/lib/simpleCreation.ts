@@ -3,6 +3,8 @@
  * 未知字段在合并时保留；简单模式仅维护「一个用户身份」槽（多身份请用高级创作）。
  */
 
+import { EDITOR_PACK_REPLY_QUALITY_ANCHOR } from './replyQualityAnchorPreset'
+
 export const PERSONALITY_KEYS = [
   'stubbornness',
   'clinginess',
@@ -24,7 +26,6 @@ export const PERSONALITY_LABELS_ZH: Record<(typeof PERSONALITY_KEYS)[number], st
 }
 
 export type PluginBackendOpt = 'builtin' | 'builtin_v2' | 'remote' | 'directory'
-export type LlmBackendOpt = 'ollama' | 'remote' | 'directory'
 /** 与 manifest `evolution.personality_source` 一致 */
 export type PersonalitySourceOpt = 'vector' | 'profile'
 
@@ -61,7 +62,6 @@ export type SimpleManifestForm = {
 
 export type SimpleSettingsForm = {
   schemaVersion: number
-  model: string
   eventImpactFactor: number
   /** `vector`：七维增量为主；`profile`：核心性格档案 + 运行时可变档案（模型维护），七维多为视图 */
   personalitySource: PersonalitySourceOpt
@@ -75,13 +75,14 @@ export type SimpleSettingsForm = {
   pluginEmotion: PluginBackendOpt
   pluginEvent: PluginBackendOpt
   pluginPrompt: PluginBackendOpt
-  pluginLlm: LlmBackendOpt
   /** `plugin_backends.directory_plugins.*`，仅当对应模块为 `directory` 时使用 */
   directoryPluginMemory: string
   directoryPluginEmotion: string
   directoryPluginEvent: string
   directoryPluginPrompt: string
-  directoryPluginLlm: string
+  /** false：使用编写器推荐优化；true：以 replyQualityAnchor 整段替换推荐优化。 */
+  customReplyQualityEnabled: boolean
+  replyQualityAnchor: string
 }
 
 const DEFAULT_PERSONALITY = [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5]
@@ -140,7 +141,6 @@ export function normalizeKnowledgeGlob(raw: string): string {
 export function defaultSimpleSettingsForm(): SimpleSettingsForm {
   return {
     schemaVersion: 1,
-    model: 'qwen2.5:7b',
     eventImpactFactor: 1,
     personalitySource: 'vector',
     maxChangePerEvent: 0.05,
@@ -152,12 +152,12 @@ export function defaultSimpleSettingsForm(): SimpleSettingsForm {
     pluginEmotion: 'builtin',
     pluginEvent: 'builtin',
     pluginPrompt: 'builtin',
-    pluginLlm: 'ollama',
     directoryPluginMemory: '',
     directoryPluginEmotion: '',
     directoryPluginEvent: '',
     directoryPluginPrompt: '',
-    directoryPluginLlm: '',
+    customReplyQualityEnabled: false,
+    replyQualityAnchor: EDITOR_PACK_REPLY_QUALITY_ANCHOR,
   }
 }
 
@@ -224,15 +224,6 @@ function parsePluginBackendOpt(raw: unknown): PluginBackendOpt {
   return 'builtin'
 }
 
-function parseLlmBackendOpt(raw: unknown): LlmBackendOpt {
-  const s = String(raw ?? '')
-    .trim()
-    .toLowerCase()
-  if (s === 'directory') return 'directory'
-  if (s === 'remote') return 'remote'
-  return 'ollama'
-}
-
 export function settingsRecordToSimpleForm(s: Record<string, unknown>): SimpleSettingsForm {
   const evo = (s.evolution ?? {}) as Record<string, unknown>
   const mem = (s.memory_config ?? {}) as Record<string, unknown>
@@ -245,10 +236,13 @@ export function settingsRecordToSimpleForm(s: Record<string, unknown>): SimpleSe
   const swm = Number(mem.scene_weight_multiplier)
   const psRaw = String(evo.personality_source ?? '').toLowerCase()
   const personalitySource: PersonalitySourceOpt = psRaw === 'profile' ? 'profile' : 'vector'
+  const replyQualityAnchor =
+    typeof s.reply_quality_anchor === 'string' && s.reply_quality_anchor.trim()
+      ? s.reply_quality_anchor.trim()
+      : EDITOR_PACK_REPLY_QUALITY_ANCHOR
 
   return {
     schemaVersion: Number.isFinite(s.schema_version as number) ? Number(s.schema_version) : 1,
-    model: String(s.model ?? 'qwen2.5:7b'),
     eventImpactFactor: Number.isFinite(eif) ? Math.max(0.05, Math.min(5, eif)) : 1,
     personalitySource,
     maxChangePerEvent: Number.isFinite(mce) ? Math.max(0.01, Math.min(0.5, mce)) : 0.05,
@@ -260,12 +254,13 @@ export function settingsRecordToSimpleForm(s: Record<string, unknown>): SimpleSe
     pluginEmotion: parsePluginBackendOpt(pb.emotion),
     pluginEvent: parsePluginBackendOpt(pb.event),
     pluginPrompt: parsePluginBackendOpt(pb.prompt),
-    pluginLlm: parseLlmBackendOpt(pb.llm),
     directoryPluginMemory: String(dp.memory ?? '').trim(),
     directoryPluginEmotion: String(dp.emotion ?? '').trim(),
     directoryPluginEvent: String(dp.event ?? '').trim(),
     directoryPluginPrompt: String(dp.prompt ?? '').trim(),
-    directoryPluginLlm: String(dp.llm ?? '').trim(),
+    customReplyQualityEnabled:
+      replyQualityAnchor !== EDITOR_PACK_REPLY_QUALITY_ANCHOR.trim(),
+    replyQualityAnchor,
   }
 }
 
@@ -348,7 +343,10 @@ export function applySimpleSettingsToJson(
   }
 
   base.schema_version = form.schemaVersion
-  base.model = form.model.trim()
+  // 模型、GGUF 与实际主 LLM 后端由 Chat Pro 设置页管理。简单创作只声明
+  // 可移植的 Ollama 兜底，不把本机选择固化进角色包。
+  delete base.model
+  delete base.ollama_model
   base.identity_binding = form.identityBinding
   base.interaction_mode = form.interactionMode
   const evoPrev =
@@ -380,7 +378,7 @@ export function applySimpleSettingsToJson(
     emotion: form.pluginEmotion,
     event: form.pluginEvent,
     prompt: form.pluginPrompt,
-    llm: form.pluginLlm,
+    llm: 'ollama',
   }
   const dir: Record<string, string> = {}
   if (form.pluginMemory === 'directory' && form.directoryPluginMemory.trim()) {
@@ -395,13 +393,13 @@ export function applySimpleSettingsToJson(
   if (form.pluginPrompt === 'directory' && form.directoryPluginPrompt.trim()) {
     dir.prompt = form.directoryPluginPrompt.trim()
   }
-  if (form.pluginLlm === 'directory' && form.directoryPluginLlm.trim()) {
-    dir.llm = form.directoryPluginLlm.trim()
-  }
   if (Object.keys(dir).length > 0) {
     pb.directory_plugins = dir
   }
   base.plugin_backends = pb
+  base.reply_quality_anchor = form.customReplyQualityEnabled
+    ? form.replyQualityAnchor.trim() || EDITOR_PACK_REPLY_QUALITY_ANCHOR
+    : EDITOR_PACK_REPLY_QUALITY_ANCHOR
 
   base.knowledge = {
     enabled: knowledge.enabled,

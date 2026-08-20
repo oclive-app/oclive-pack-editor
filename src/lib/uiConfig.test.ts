@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseUiConfigJson, serializeUiConfig } from './uiConfig'
+import { mergeUiConfigJson, parseUiConfigJson, serializeUiConfig } from './uiConfig'
 import { defaultUiConfig } from '../types/uiConfig'
 
 describe('uiConfig parse/serialize (T13)', () => {
@@ -18,5 +18,19 @@ describe('uiConfig parse/serialize (T13)', () => {
     expect(parsed.slots.chat_toolbar.order).toEqual(['a', 'b'])
     const disk = JSON.parse(serializeUiConfig(parsed))
     expect(disk.slots.chat_toolbar.order).toEqual(['a', 'b'])
+  })
+
+  it('preserves unknown root and slot fields while updating managed UI values', () => {
+    const config = defaultUiConfig()
+    config.theme.primaryColor = '#123456'
+    const disk = JSON.parse(mergeUiConfigJson(JSON.stringify({
+      future_root: { enabled: true },
+      theme: { future_theme: 'keep' },
+      slots: { chat_toolbar: { future_slot: 7 } },
+    }), config))
+    expect(disk.future_root).toEqual({ enabled: true })
+    expect(disk.theme.future_theme).toBe('keep')
+    expect(disk.theme.primaryColor).toBe('#123456')
+    expect(disk.slots.chat_toolbar.future_slot).toBe(7)
   })
 })

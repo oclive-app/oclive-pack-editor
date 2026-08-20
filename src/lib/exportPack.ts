@@ -7,11 +7,11 @@ import {
 import { mergedSceneIds, rolePackRelativePaths } from './packLayout'
 import { normalizeKnowledgePath, type KnowledgeMarkdownFile } from './knowledgeFiles'
 import {
-  buildBlueprintV2FromLegacy,
+  buildBlueprintFromLegacy,
   mergeEditorPreservedBlueprintFields,
   PIPELINE_BLUEPRINT_FILENAME,
   REPLY_QUALITY_ANCHOR_REL_PATH,
-  serializeBlueprintV2,
+  serializeBlueprint,
 } from './blueprintV2'
 import { mergeEditorReplyQualityAnchor } from './replyQualityAnchorPreset'
 import {
@@ -20,11 +20,58 @@ import {
   type SceneEditorEntry,
 } from './scenePackUser'
 import { normalizeUserIdentityTemplatePath } from './userIdentities'
+import { ADULT_EXTENSION_FILENAME } from './adultExtension'
 
 export type ExportableManifest = Record<string, unknown>
 export type ExportableSettings = Record<string, unknown>
 export type RolePackTextFile = { path: string; content: string }
 export type RolePackBinaryFile = { relPath: string; file: File }
+
+function normalizeSafeRoleRelativePath(path: string): string | null {
+  const rel = path.replace(/\\/g, '/').replace(/^\/+/, '')
+  if (!rel || rel.split('/').some((part) => !part || part === '.' || part === '..')) {
+    return null
+  }
+  return rel
+}
+
+/**
+ * Collect binary outputs with one collision policy for zip, browser-folder,
+ * Tauri-folder and export validation.
+ *
+ * Editor-managed text outputs and catalog assets win over stale preserved
+ * copies loaded from an existing pack.
+ */
+export function collectRolePackBinaryFilesForExport(
+  roleId: string,
+  managedPaths: Iterable<string>,
+  extra?: Partial<PackExtraFiles>,
+): RolePackBinaryFile[] {
+  const id = roleId.trim()
+  const prefix = `${id}/`
+  const seen = new Set<string>()
+  for (const path of managedPaths) {
+    const normalized = path.replace(/\\/g, '/').replace(/^\/+/, '')
+    const rel = normalized.startsWith(prefix) ? normalized.slice(prefix.length) : normalized
+    const safe = normalizeSafeRoleRelativePath(rel)
+    if (safe) seen.add(safe)
+  }
+
+  const catalog = extra?.catalogAssets?.length
+    ? extra.catalogAssets
+    : (extra?.emotionImages ?? []).map((file) => ({
+        relPath: `assets/images/${file.name}`,
+        file,
+      }))
+  const output: RolePackBinaryFile[] = []
+  for (const candidate of [...catalog, ...(extra?.preservedFiles ?? [])]) {
+    const relPath = normalizeSafeRoleRelativePath(candidate.relPath)
+    if (!relPath || seen.has(relPath)) continue
+    seen.add(relPath)
+    output.push({ relPath, file: candidate.file })
+  }
+  return output
+}
 
 const KNOWLEDGE_PLACEHOLDER = `在此目录放置世界观 Markdown（可选）。
 运行时契约见 oclivenewnew 仓库 creator-docs/role-pack/WORLDVIEW_KNOWLEDGE.md
@@ -76,12 +123,22 @@ export type PackExtraFiles = {
   creatorMessage?: string
   /** unified：全文只取首条非空行；per_module：每行一条（多模块拼接时汇总展示） */
   creatorMessageMode?: CreatorMessageExportMode
-  /** 写入 prompts/reply_quality_anchor.md（人类可读镜像；运行时 SSOT 为 meta.reply_quality_anchor） */
+  /** 写入 prompts/reply_quality_anchor.md（人类可读镜像；v4 运行时 SSOT 为 runtime_config） */
   replyQualityAnchorMarkdown?: string
   /** 为 true 时若 settings 无锚点则写入编辑器默认锚点 */
   includeDefaultReplyQualityAnchor?: boolean
   /** 可选：`roles/{id}/config.json` 全文 */
   configJson?: string
+  /** 可选：`roles/{id}/voice_profile.json` 全文 */
+  voiceProfileJson?: string
+  /** 可选：`roles/{id}/prompts/deep_capsule.txt` 全文 */
+  deepCapsuleText?: string
+  /** 可选：`roles/{id}/prompts/system.md` 创作辅助全文 */
+  systemPromptMarkdown?: string
+  /** 可选：`roles/{id}/polish_prompt.md` 全文 */
+  polishPromptMarkdown?: string
+  /** Optional Chat Pro adult-role extension; exported inside the same role pack. */
+  adultExtensionJson?: string
   /** 可选：`roles/{id}/portrait_catalog.json` 全文（A2 SSOT） */
   portraitCatalogJson?: string
   /** 可选：`roles/{id}/user_identities/index.json` 全文 */
@@ -128,20 +185,35 @@ export function buildRolePackFiles(
     anchorFromSettings.trim() ||
     ''
 
+  const targetSchemaVersion =
+    extra?.preservedBlueprintFields?.schema_version === 2 ? 2 : 4
   const blueprint = mergeEditorPreservedBlueprintFields(
-    buildBlueprintV2FromLegacy(m, settingsForBlueprint),
+    buildBlueprintFromLegacy(m, settingsForBlueprint, targetSchemaVersion),
     extra?.preservedBlueprintFields,
   )
   blueprint.meta.id = id
   const files = new Map<string, string>()
 
-  files.set(`${id}/${PIPELINE_BLUEPRINT_FILENAME}`, serializeBlueprintV2(blueprint))
+  files.set(`${id}/${PIPELINE_BLUEPRINT_FILENAME}`, serializeBlueprint(blueprint))
 
   const scenes = mergedSceneIds(m['scenes'] as string[] | undefined, [])
 
+  let hasManagedPrompt = false
   if (anchorBody) {
     files.set(`${id}/${REPLY_QUALITY_ANCHOR_REL_PATH}`, `${anchorBody.trim()}\n`)
-  } else {
+    hasManagedPrompt = true
+  }
+  const deepCapsule = extra?.deepCapsuleText?.trim()
+  if (deepCapsule) {
+    files.set(`${id}/prompts/deep_capsule.txt`, `${deepCapsule}\n`)
+    hasManagedPrompt = true
+  }
+  const systemPrompt = extra?.systemPromptMarkdown?.trim()
+  if (systemPrompt) {
+    files.set(`${id}/prompts/system.md`, `${systemPrompt}\n`)
+    hasManagedPrompt = true
+  }
+  if (!hasManagedPrompt) {
     files.set(
       `${id}/prompts/.oclive_placeholder.txt`,
       '可选：在此目录放置 reply_quality_anchor.md 等创作辅助 Markdown。\n',
@@ -176,6 +248,27 @@ export function buildRolePackFiles(
     files.set(
       `${id}/user_identities/index.json`,
       uiIndexRaw.endsWith('\n') ? uiIndexRaw : `${uiIndexRaw}\n`,
+    )
+  }
+
+  const voiceProfileRaw = extra?.voiceProfileJson?.trim()
+  if (voiceProfileRaw) {
+    files.set(
+      `${id}/voice_profile.json`,
+      voiceProfileRaw.endsWith('\n') ? voiceProfileRaw : `${voiceProfileRaw}\n`,
+    )
+  }
+
+  const polishPromptRaw = extra?.polishPromptMarkdown?.trim()
+  if (polishPromptRaw) {
+    files.set(`${id}/polish_prompt.md`, `${polishPromptRaw}\n`)
+  }
+
+  const adultRaw = extra?.adultExtensionJson?.trim()
+  if (adultRaw) {
+    files.set(
+      `${id}/${ADULT_EXTENSION_FILENAME}`,
+      adultRaw.endsWith('\n') ? adultRaw : `${adultRaw}\n`,
     )
   }
 
@@ -248,23 +341,12 @@ export async function buildRolePackZipBlob(
     zip.file(path, content)
   }
   const id = roleId.trim()
-  const assets =
-    extra?.catalogAssets?.length
-      ? extra.catalogAssets
-      : (extra?.emotionImages ?? []).map((f) => ({
-          relPath: `assets/images/${f.name}`,
-          file: f,
-        }))
-  for (const { relPath, file } of assets) {
-    const buf = await file.arrayBuffer()
-    zip.file(`${id}/${relPath.replace(/\\/g, '/')}`, buf)
-  }
-  for (const { relPath, file } of extra?.preservedFiles ?? []) {
-    const rel = relPath.replace(/\\/g, '/').replace(/^\/+/, '')
-    if (!rel || rel.split('/').some((part) => !part || part === '.' || part === '..')) continue
-    const zipPath = `${id}/${rel}`
-    if (zip.file(zipPath)) continue
-    zip.file(zipPath, await file.arrayBuffer())
+  for (const { relPath, file } of collectRolePackBinaryFilesForExport(
+    id,
+    files.keys(),
+    extra,
+  )) {
+    zip.file(`${id}/${relPath}`, await file.arrayBuffer())
   }
   return zip.generateAsync({ type: 'blob' })
 }

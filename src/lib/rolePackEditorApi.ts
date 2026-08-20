@@ -17,10 +17,16 @@ export type RolePackEditorLoadPayload = {
   manifestText: string
   settingsText?: string
   configText?: string
+  adultExtensionText?: string
   portraitCatalogText?: string
   catalogAssets?: RolePackCatalogAssetPayload[]
+  preservedFiles?: Array<{ path: string; base64: string }>
   userIdentitiesIndexText?: string
   memorySeedText?: string
+  voiceProfileText?: string
+  deepCapsuleText?: string
+  systemPromptText?: string
+  polishPromptText?: string
   corePersonalityText?: string
   creatorMessageText?: string
   uiText?: string
@@ -59,6 +65,31 @@ export async function invokeListRolePacksUnderRolesRoot(
   return invoke<RolePackListEntry[]>('list_role_packs_under_roles_root', { rolesRoot })
 }
 
+export async function invokeFindRolesRootForEditor(rolesRoot: string): Promise<string> {
+  return invoke<string>('find_roles_root_for_editor', { rolesRoot })
+}
+
+export async function invokeGuessDefaultRolesRoot(): Promise<string | null> {
+  return invoke<string | null>('guess_default_roles_root')
+}
+
 export async function invokeLoadRolePackForEditor(roleDir: string): Promise<RolePackEditorLoadPayload> {
   return invoke<RolePackEditorLoadPayload>('load_role_pack_for_editor', { roleDir })
+}
+
+export function preservedPayloadsToFiles(
+  files: Array<{ path: string; base64: string }>,
+): Array<{ relPath: string; file: File }> {
+  return files.map(({ path, base64 }) => {
+    const binary = atob(base64)
+    const bytes = new Uint8Array(binary.length)
+    for (let index = 0; index < binary.length; index++) {
+      bytes[index] = binary.charCodeAt(index)
+    }
+    const fileName = path.split('/').pop() || 'payload.json'
+    return {
+      relPath: path,
+      file: new File([bytes], fileName, { type: 'application/octet-stream' }),
+    }
+  })
 }

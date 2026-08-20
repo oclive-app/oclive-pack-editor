@@ -9,6 +9,7 @@ import { setAppLocale, getLocalePreference, type AppLocale } from './i18n'
 import PackHeaderActions from './components/pack/PackHeaderActions.vue'
 import PackShellMenu from './components/pack/PackShellMenu.vue'
 import PackConfirmDialog from './components/pack/PackConfirmDialog.vue'
+import CharacterCardModeDialog from './components/pack/CharacterCardModeDialog.vue'
 import PackExportCreatorMessageDialog, {
   type ExportCreatorMessageKind,
 } from './components/pack/PackExportCreatorMessageDialog.vue'
@@ -21,15 +22,23 @@ import {
   saveDraftSnapshot,
   type PackDraftMeta,
 } from './lib/draftStorage'
+import type { NewPackPresetId } from './lib/newPackPresets'
 
 const AdvancedCreationPanel = defineAsyncComponent(() => import('./components/pack/AdvancedCreationPanel.vue'))
 const SimpleCreationPanel = defineAsyncComponent(() => import('./components/pack/SimpleCreationPanel.vue'))
+const AdultExtensionPanel = defineAsyncComponent(() => import('./components/pack/AdultExtensionPanel.vue'))
 
 const {
   manifestText,
   settingsText,
   corePersonalityText,
+  adultExtensionJson,
   memorySeedJson,
+  configJsonText,
+  voiceProfileJson,
+  deepCapsuleText,
+  systemPromptMarkdown,
+  polishPromptMarkdown,
   userIdentityFiles,
   userIdentitiesIndexJson,
   worldKnowledgeTexts,
@@ -37,6 +46,7 @@ const {
   validationErrors,
   lastMessage,
   lastMessageIsError,
+  characterCardImportReport,
   requireChecksBeforeExport,
   syncFormWarning,
   creationMode,
@@ -50,10 +60,18 @@ const {
   portraitExtraEntries,
   creatorMessageToOthers,
   creatorMessageMode,
+  authorSummary,
+  authorDetailMarkdown,
+  authorRecommendedRows,
+  authorIncludeSuggestedUi,
+  authorSuggestedBackendsJson,
+  uiConfig,
   folderExportOk,
   manifestRoleId,
   runValidate,
+  canEnterAdultEditor,
   onImportPack,
+  onImportCharacterCard,
   onPortraitSlotPick,
   onPortraitSlotClear,
   clearPortraitSlots,
@@ -104,7 +122,9 @@ onMounted(() => {
 const showSaveDraft = computed(
   () =>
     packSession.value !== 'idle' &&
-    (editorView.value === 'simple' || editorView.value === 'advanced'),
+    (editorView.value === 'simple'
+      || editorView.value === 'advanced'
+      || editorView.value === 'adult'),
 )
 
 const { themePreference, setTheme, bumpScale, scaleLabel } = usePackShellPreferences()
@@ -115,18 +135,22 @@ const uiLocale = ref<AppLocale>(getLocalePreference())
 const writebackOpen = ref(false)
 let writebackResolve: ((v: 'overwrite' | 'saveAsNew' | 'cancel') => void) | null = null
 
+const characterCardModeOpen = ref(false)
 const exportCreatorOpen = ref(false)
 const pendingExportKind = ref<ExportCreatorMessageKind | null>(null)
+const pendingExportSaveAs = ref(false)
 
-function beginExport(kind: ExportCreatorMessageKind): void {
+function beginExport(kind: ExportCreatorMessageKind, saveAs = false): void {
   flushSimpleToJson()
   pendingExportKind.value = kind
+  pendingExportSaveAs.value = saveAs
   exportCreatorOpen.value = true
 }
 
 function onExportCreatorCancel(): void {
   exportCreatorOpen.value = false
   pendingExportKind.value = null
+  pendingExportSaveAs.value = false
 }
 
 async function onExportCreatorConfirm(payload: { enabled: boolean; message: string }): Promise<void> {
@@ -134,9 +158,11 @@ async function onExportCreatorConfirm(payload: { enabled: boolean; message: stri
   creatorMessageToOthers.value = payload.enabled ? payload.message.trim() : ''
   creatorMessageMode.value = 'per_module'
   const kind = pendingExportKind.value
+  const saveAs = pendingExportSaveAs.value
   pendingExportKind.value = null
+  pendingExportSaveAs.value = false
   if (!kind) return
-  if (kind === 'ocpak') await exportZip(true)
+  if (kind === 'ocpak') await exportZip(true, saveAs)
   else await executeExportFolder()
 }
 
@@ -160,15 +186,18 @@ const editorNav = computed((): { id: EditorViewId; label: string; icon: string }
   { id: 'start', label: String(t('packEditor.nav.start')), icon: '🏠' },
   { id: 'simple', label: String(t('packEditor.nav.simple')), icon: '📝' },
   { id: 'advanced', label: String(t('packEditor.nav.advanced')), icon: '⚙️' },
+  { id: 'adult', label: String(t('packEditor.nav.adult')), icon: '18+' },
 ])
 
-function goEditorView(id: EditorViewId) {
-  if ((id === 'simple' || id === 'advanced') && packSession.value === 'idle') {
+async function goEditorView(id: EditorViewId) {
+  if ((id === 'simple' || id === 'advanced' || id === 'adult') && packSession.value === 'idle') {
     lastMessage.value = String(t('packEditor.draft.pickFirst'))
     lastMessageIsError.value = true
     editorView.value = 'start'
     return
   }
+  if (id === 'adult' && !(await canEnterAdultEditor()))
+    return
   editorView.value = id
   if (id === 'simple') creationMode.value = 'simple'
   if (id === 'advanced') creationMode.value = 'advanced'
@@ -179,6 +208,7 @@ const viewTitle = computed(() => {
   if (id === 'start') return String(t('packEditor.titles.start'))
   if (id === 'simple') return String(t('packEditor.titles.simple'))
   if (id === 'advanced') return String(t('packEditor.titles.advanced'))
+  if (id === 'adult') return String(t('packEditor.titles.adult'))
   return ''
 })
 
@@ -211,7 +241,7 @@ function onSaveDraft(showToast = true): void {
 }
 
 function autoSaveDraftOnLeaveEditView(prev: EditorViewId | undefined): void {
-  if (prev !== 'simple' && prev !== 'advanced') return
+  if (prev !== 'simple' && prev !== 'advanced' && prev !== 'adult') return
   if (packSession.value === 'idle') return
   onSaveDraft(false)
 }
@@ -253,6 +283,10 @@ function onDiscardDraft(): void {
 
 async function onExportOcpak(): Promise<void> {
   beginExport('ocpak')
+}
+
+function onExportOcpakAs(): void {
+  beginExport('ocpak', true)
 }
 
 function promptWriteback(): Promise<'overwrite' | 'saveAsNew' | 'cancel'> {
@@ -305,8 +339,26 @@ async function onWorkspaceImportPack(e: Event) {
   }
 }
 
-function onCreateNewPack() {
-  resetToNewPack()
+async function onWorkspaceImportCharacterCard(e: Event) {
+  characterCardModeOpen.value = false
+  await onImportCharacterCard(e)
+  if (!lastMessageIsError.value) {
+    packSession.value = 'new'
+    characterCardModeOpen.value = true
+  }
+}
+
+function onCharacterCardModeSelect(mode: 'simple' | 'advanced'): void {
+  characterCardModeOpen.value = false
+  void goEditorView(mode)
+}
+
+function onCharacterCardModeCancel(): void {
+  characterCardModeOpen.value = false
+}
+
+function onCreateNewPack(presetId: NewPackPresetId) {
+  resetToNewPack(presetId)
   packSession.value = 'new'
   lastMessage.value = String(t('packEditor.rolesWorkspace.createdNew'))
   lastMessageIsError.value = false
@@ -358,6 +410,7 @@ function onCreateNewPack() {
               @run-validate="onHeaderValidate"
               @save-draft="() => onSaveDraft()"
               @export-ocpak="onExportOcpak"
+              @export-ocpak-as="onExportOcpakAs"
               @export-folder="onExportFolder"
             />
             <PackShellMenu
@@ -407,6 +460,7 @@ function onCreateNewPack() {
         @continue-draft="onContinueDraft"
         @discard-draft="onDiscardDraft"
         @import-pack="onWorkspaceImportPack"
+        @import-character-card="onWorkspaceImportCharacterCard"
         @apply-market-compose="onApplyMarketCompose"
       />
 
@@ -417,6 +471,14 @@ function onCreateNewPack() {
         @overwrite="closeWriteback('overwrite')"
         @save-as-new="closeWriteback('saveAsNew')"
         @cancel="closeWriteback('cancel')"
+      />
+
+      <CharacterCardModeDialog
+        :open="characterCardModeOpen"
+        :report="characterCardImportReport"
+        @simple="onCharacterCardModeSelect('simple')"
+        @advanced="onCharacterCardModeSelect('advanced')"
+        @cancel="onCharacterCardModeCancel"
       />
 
       <PackExportCreatorMessageDialog
@@ -440,6 +502,7 @@ function onCreateNewPack() {
           :emotion-summary="emotionImageSummary"
           :portrait-slot-files="portraitSlotFiles"
           :portrait-extra-entries="portraitExtraEntries"
+          :character-card-import-report="characterCardImportReport"
           @portrait-slot-pick="onPortraitSlotPick"
           @portrait-slot-clear="onPortraitSlotClear"
           @portrait-clear-all="clearPortraitSlots"
@@ -456,6 +519,17 @@ function onCreateNewPack() {
           v-model:settings-text="settingsText"
           v-model:core-personality="corePersonalityText"
           v-model:memory-seed-json="memorySeedJson"
+          v-model:config-json-text="configJsonText"
+          v-model:voice-profile-json="voiceProfileJson"
+          v-model:deep-capsule-text="deepCapsuleText"
+          v-model:system-prompt-markdown="systemPromptMarkdown"
+          v-model:polish-prompt-markdown="polishPromptMarkdown"
+          v-model:creator-message="creatorMessageToOthers"
+          v-model:author-summary="authorSummary"
+          v-model:author-detail-markdown="authorDetailMarkdown"
+          v-model:author-recommended-rows="authorRecommendedRows"
+          v-model:author-include-suggested-ui="authorIncludeSuggestedUi"
+          v-model:author-suggested-backends-json="authorSuggestedBackendsJson"
           v-model:user-identity-files="userIdentityFiles"
           v-model:user-identities-index-json="userIdentitiesIndexJson"
           v-model:world-knowledge-texts="worldKnowledgeTexts"
@@ -465,12 +539,20 @@ function onCreateNewPack() {
           :emotion-summary="emotionImageSummary"
           :portrait-slot-files="portraitSlotFiles"
           :portrait-extra-entries="portraitExtraEntries"
+          :ui-config="uiConfig"
           @portrait-slot-pick="onPortraitSlotPick"
           @portrait-slot-clear="onPortraitSlotClear"
           @portrait-clear-all="clearPortraitSlots"
           @portrait-extra-apply-choices="applyPortraitExtraUserChoices"
           @portrait-extra-add="addPortraitExtraEntry"
           @portrait-extra-remove="removePortraitExtraEntry"
+        />
+      </div>
+
+      <div v-if="shouldMountView('adult')" v-show="editorView === 'adult'" class="view-stack">
+        <AdultExtensionPanel
+          v-model="adultExtensionJson"
+          :scene-ids="sceneEditorEntries.map((entry) => entry.sceneId)"
         />
       </div>
     </div>

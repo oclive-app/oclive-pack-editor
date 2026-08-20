@@ -1,4 +1,6 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch, type Ref } from 'vue'
+import { invoke } from '@tauri-apps/api/core'
+import { save } from '@tauri-apps/plugin-dialog'
 import { i18n } from '../i18n'
 import {
   DEFAULT_CORE_PERSONALITY_TEXT,
@@ -11,8 +13,20 @@ import {
   triggerDownload,
   type PackExtraFiles,
 } from '../lib/exportPack'
-import { pickRolesRootAndWritePack, isFolderExportSupported, writePackToRolesRootPath, confirmOverwriteExistingRoleDir } from '../lib/exportFolder'
+import {
+  arrayBufferToBase64,
+  confirmOverwriteExistingRoleDir,
+  isFolderExportSupported,
+  isTauriRuntime,
+  pickRolesRootAndWritePack,
+  writePackToRolesRootPath,
+} from '../lib/exportFolder'
+import { readLastOcpakPath, rememberOcpakPath } from '../lib/ocpakSaveTarget'
 import { importRolePackFromZip, importedPackBrainHint } from '../lib/importPack'
+import {
+  importCharacterCard,
+  type CharacterCardConversionReport,
+} from '../lib/characterCardImport'
 import {
   applyLoadedPackToEditor,
   importedPackToApplyInput,
@@ -55,6 +69,7 @@ import {
   applyExportProfile,
   buildPortraitCatalogJson,
   buildSimpleConfigJson,
+  mergeManagedConfigJson,
   collectCatalogBinaryAssets,
   emotionFilesFromCatalog,
   parseConfigJson,
@@ -77,7 +92,7 @@ import {
   emptyAuthorRecRow,
   type AuthorRecRow,
 } from '../lib/authorPack'
-import { serializeUiConfig } from '../lib/uiConfig'
+import { mergeUiConfigJson } from '../lib/uiConfig'
 import { defaultUiConfig, type UiConfig } from '../types/uiConfig'
 import {
   applySimpleManifestToJson,
@@ -97,6 +112,7 @@ import {
   type PortraitExtraDraftMeta,
   type PortraitSlotDraftMeta,
 } from '../lib/draftStorage'
+import { validateAdultExtension } from '../lib/adultExtension'
 
 const STORAGE_REQUIRE_CHECKS = 'oclive-pack-editor-require-checks-before-export'
 const STORAGE_CREATION_MODE = 'oclive-pack-editor-creation-mode'
@@ -114,8 +130,16 @@ export function usePackEditor() {
   const manifestText = ref(DEFAULT_MANIFEST_JSON)
   const settingsText = ref(DEFAULT_SETTINGS_JSON)
   const corePersonalityText = ref(DEFAULT_CORE_PERSONALITY_TEXT)
+  const adultExtensionJson = ref('')
   /** 创作者维护的只读初始记忆；与运行时 LTM/STM 分离。 */
   const memorySeedJson = ref('')
+  const configJsonText = ref(
+    buildSimpleConfigJson(false, { enabled: false, backend: 'image' }),
+  )
+  const voiceProfileJson = ref('')
+  const deepCapsuleText = ref('')
+  const systemPromptMarkdown = ref('')
+  const polishPromptMarkdown = ref('')
   const userIdentityFiles = ref<RolePackTextFile[]>([])
   const userIdentitiesIndexJson = ref('')
   const preservedFiles = ref<RolePackBinaryFile[]>([])
@@ -184,6 +208,8 @@ export function usePackEditor() {
   const authorRecommendedRows = ref<AuthorRecRow[]>([emptyAuthorRecRow()])
   const authorIncludeSuggestedUi = ref(false)
   const authorSuggestedBackendsJson = ref('')
+  const uiJsonSource = ref('')
+  const authorJsonSource = ref('')
 
   const validationErrors = ref<string[]>([])
   /** 最近一次检查是否用 wasm；`null` 表示本会话尚未跑过检查 */
@@ -191,6 +217,7 @@ export function usePackEditor() {
   const lastMessage = ref('')
   /** 与 lastMessage 配套：错误类文案为 true，成功提示为 false */
   const lastMessageIsError = ref(false)
+  const characterCardImportReport = ref<CharacterCardConversionReport | null>(null)
   const requireChecksBeforeExport = ref(false)
   /** 简单模式表单与 JSON 不一致时（JSON 无法解析）提示 */
   const syncFormWarning = ref('')
@@ -213,7 +240,7 @@ export function usePackEditor() {
   }
 
   const creationMode = ref<'simple' | 'advanced'>('simple')
-  const advancedTab = ref<'manifest' | 'settings' | 'core' | 'memory' | 'identities' | 'world' | 'scenes' | 'images'>('manifest')
+  const advancedTab = ref<'manifest' | 'settings' | 'core' | 'config' | 'memory' | 'identities' | 'world' | 'scenes' | 'prompts' | 'voice' | 'ui' | 'author' | 'images'>('manifest')
 
   const simpleM = reactive<SimpleManifestForm>(defaultSimpleManifestForm())
   const simpleS = reactive<SimpleSettingsForm>(defaultSimpleSettingsForm())
@@ -332,6 +359,7 @@ export function usePackEditor() {
       includeSuggestedUi: authorIncludeSuggestedUi.value,
       uiConfig,
       suggestedPluginBackendsJson: authorSuggestedBackendsJson.value,
+      currentRaw: authorJsonSource.value,
     })
     const profiled = applyExportProfile(
       exportProfile.value,
@@ -348,7 +376,7 @@ export function usePackEditor() {
     const extras = profiled.extraEntries
     const hasCatalog = Object.keys(slotMap).length > 0 || extras.length > 0
     return {
-      uiConfigJson: serializeUiConfig(uiConfig),
+      uiConfigJson: mergeUiConfigJson(uiJsonSource.value, uiConfig),
       corePersonality: corePersonalityText.value,
       worldviewMarkdown: worldviewMarkdown.value,
       knowledgeMarkdownFiles: docs,
@@ -356,7 +384,22 @@ export function usePackEditor() {
       catalogAssets: collectCatalogBinaryAssets(slotMap, extras),
       creatorMessage: creatorMessageToOthers.value,
       creatorMessageMode: creatorMessageMode.value,
-      configJson: buildSimpleConfigJson(profiled.portraitEnabled && hasCatalog, profiled.visual),
+      configJson: mergeManagedConfigJson(
+        configJsonText.value,
+        profiled.portraitEnabled && hasCatalog,
+        profiled.visual,
+      ),
+      ...(voiceProfileJson.value.trim() ? { voiceProfileJson: voiceProfileJson.value } : {}),
+      ...(deepCapsuleText.value.trim() ? { deepCapsuleText: deepCapsuleText.value } : {}),
+      ...(systemPromptMarkdown.value.trim()
+        ? { systemPromptMarkdown: systemPromptMarkdown.value }
+        : {}),
+      ...(polishPromptMarkdown.value.trim()
+        ? { polishPromptMarkdown: polishPromptMarkdown.value }
+        : {}),
+      ...(adultExtensionJson.value.trim()
+        ? { adultExtensionJson: adultExtensionJson.value }
+        : {}),
       ...(hasCatalog
         ? { portraitCatalogJson: buildPortraitCatalogJson(slotMap, extras) }
         : {}),
@@ -399,6 +442,19 @@ export function usePackEditor() {
   })
 
   watch(worldKnowledgeTexts, syncKnowledgeFilesFromWorldTexts, { deep: true })
+
+  watch(configJsonText, (raw) => {
+    try {
+      const parsed = JSON.parse(raw) as unknown
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return
+    } catch {
+      return
+    }
+    const config = parseConfigJson(raw)
+    visualPresentationEnabled.value = config.visual.enabled
+    visualPresentationBackend.value = config.visual.backend
+    visualPresentationLive2dModel.value = config.visual.live2dModel ?? ''
+  })
 
   watch(
     manifestText,
@@ -567,7 +623,7 @@ export function usePackEditor() {
     return typeof id === 'string' ? id : ''
   })
 
-  async function collectValidationState(): Promise<{
+  async function collectBaseValidationState(): Promise<{
     errors: string[]
     wasmUsed: boolean
     ok: boolean
@@ -585,7 +641,13 @@ export function usePackEditor() {
       portraitExtraEntries.value,
       Object.keys(portraitSlotFiles.value).length > 0,
     )
-    const errors = [...r.errors, ...kErrs, ...memoryErrs, ...identityErrs, ...portrait.errors]
+    const errors = [
+      ...r.errors,
+      ...kErrs,
+      ...memoryErrs,
+      ...identityErrs,
+      ...portrait.errors,
+    ]
     return {
       errors,
       wasmUsed: r.wasmUsed,
@@ -596,6 +658,35 @@ export function usePackEditor() {
         identityErrs.length === 0 &&
         portrait.errors.length === 0,
     }
+  }
+
+  async function collectValidationState(): Promise<{
+    errors: string[]
+    wasmUsed: boolean
+    ok: boolean
+  }> {
+    const base = await collectBaseValidationState()
+    const adultErrs = validateAdultExtension(
+      adultExtensionJson.value,
+      sceneIdsFromEditorState(),
+    )
+    return {
+      errors: [...base.errors, ...adultErrs],
+      wasmUsed: base.wasmUsed,
+      ok: base.ok && adultErrs.length === 0,
+    }
+  }
+
+  async function canEnterAdultEditor(): Promise<boolean> {
+    if (noActivePackForCheck())
+      return false
+    const base = await collectBaseValidationState()
+    if (!base.ok) {
+      validationErrors.value = base.errors
+      validationLastUsedWasm.value = base.wasmUsed
+      setFeedback(pe('packEditor.adult.baseInvalid', { count: base.errors.length }), true)
+    }
+    return base.ok
   }
 
   async function runValidate(): Promise<void> {
@@ -648,6 +739,41 @@ export function usePackEditor() {
     } catch (err) {
       setFeedback(
         pe('packEditor.feedback.importFail', {
+          err: err instanceof Error ? err.message : String(err),
+        }),
+        true,
+      )
+    }
+    inp.value = ''
+  }
+
+  async function onImportCharacterCard(e: Event): Promise<void> {
+    const inp = e.target as HTMLInputElement
+    const file = inp.files?.[0]
+    setFeedback('', false)
+    if (!file) return
+    try {
+      const converted = await importCharacterCard(file)
+      applyLoadedPackToEditor(converted.input, applyLoadedPackTargets)
+      characterCardImportReport.value = converted.report
+      applyPortraitSlotsFromImport(
+        converted.input.portraitCatalogJson ?? '',
+        converted.input.emotionImageFiles ?? [],
+        converted.input.configJson ?? '',
+      )
+      creationMode.value = 'simple'
+      flushSimpleToJson()
+      setFeedback(
+        pe('packEditor.feedback.characterCardImportSuccess', {
+          roleId: converted.report.roleId,
+          format: converted.report.sourceFormat.toUpperCase(),
+        }),
+        false,
+      )
+    } catch (err) {
+      characterCardImportReport.value = null
+      setFeedback(
+        pe('packEditor.feedback.characterCardImportFail', {
           err: err instanceof Error ? err.message : String(err),
         }),
         true,
@@ -844,7 +970,7 @@ export function usePackEditor() {
     return { ok: true, message: pe('packEditor.feedback.marketComposeOk') }
   }
 
-  async function exportZip(ocpak: boolean): Promise<void> {
+  async function exportZip(ocpak: boolean, saveAs = false): Promise<void> {
     setFeedback('', false)
     const built = await tryBuildExportPayload()
     if (!built.ok) {
@@ -856,8 +982,43 @@ export function usePackEditor() {
     try {
       const blob = await buildRolePackZipBlob(roleId, manifest, settings, packExtra())
       const name = suggestedZipName(roleId, ocpak)
-      triggerDownload(blob, name)
-      setFeedback(pe('packEditor.feedback.exportZipSuccess', { name, roleId }), false)
+
+      if (!isTauriRuntime()) {
+        triggerDownload(blob, name)
+        setFeedback(pe('packEditor.feedback.exportZipSuccess', { name, roleId }), false)
+        return
+      }
+
+      const saveOptions = {
+        defaultPath: readLastOcpakPath() ?? name,
+        filters: [{ name: 'OCLive Role Pack', extensions: ['ocpak'] }],
+      }
+      let target = saveAs ? null : readLastOcpakPath()
+      let usedDialog = false
+      if (!target) {
+        const picked = await save(saveOptions)
+        if (picked === null) return
+        target = picked
+        usedDialog = true
+      }
+
+      const writeTo = async (path: string): Promise<void> => {
+        const base64 = arrayBufferToBase64(await blob.arrayBuffer())
+        await invoke('write_export_zip_file', { path, base64 })
+      }
+
+      try {
+        await writeTo(target)
+      } catch (error) {
+        if (usedDialog) throw error
+        const picked = await save(saveOptions)
+        if (picked === null) return
+        target = picked
+        await writeTo(target)
+      }
+
+      rememberOcpakPath(target)
+      setFeedback(pe('packEditor.feedback.exportZipSaved', { name, roleId, path: target }), false)
     } catch (e) {
       setFeedback(
         pe('packEditor.feedback.exportZipFail', {
@@ -872,11 +1033,18 @@ export function usePackEditor() {
     manifestText,
     settingsText,
     corePersonalityText,
+    adultExtensionJson,
     memorySeedJson,
+    configJsonText,
+    voiceProfileJson,
+    deepCapsuleText,
+    systemPromptMarkdown,
+    polishPromptMarkdown,
     userIdentityFiles,
     userIdentitiesIndexJson,
     preservedFiles,
     preservedBlueprintFields,
+    characterCardImportReport,
     worldviewMarkdown,
     knowledgeMarkdownFiles,
     emotionImageFiles,
@@ -888,6 +1056,8 @@ export function usePackEditor() {
     creatorMessageToOthers,
     creatorMessageMode,
     uiConfig,
+    uiJsonSource,
+    authorJsonSource,
     authorSummary,
     authorDetailMarkdown,
     authorRecommendedRows,
@@ -997,7 +1167,13 @@ export function usePackEditor() {
       manifestText: manifestText.value,
       settingsText: settingsText.value,
       corePersonalityText: corePersonalityText.value,
+      adultExtensionJson: adultExtensionJson.value,
       memorySeedJson: memorySeedJson.value,
+      configJsonText: configJsonText.value,
+      voiceProfileJson: voiceProfileJson.value,
+      deepCapsuleText: deepCapsuleText.value,
+      systemPromptMarkdown: systemPromptMarkdown.value,
+      polishPromptMarkdown: polishPromptMarkdown.value,
       userIdentityFiles: userIdentityFiles.value.map((f) => ({ ...f })),
       userIdentitiesIndexJson: userIdentitiesIndexJson.value,
       preservedBlueprintFields: { ...preservedBlueprintFields.value },
@@ -1020,6 +1196,8 @@ export function usePackEditor() {
       authorIncludeSuggestedUi: authorIncludeSuggestedUi.value,
       authorSuggestedBackendsJson: authorSuggestedBackendsJson.value,
       uiConfig: { ...uiConfig },
+      uiJsonSource: uiJsonSource.value,
+      authorJsonSource: authorJsonSource.value,
       portraitSlotMeta: capturePortraitSlotMeta(),
       portraitExtraMeta: capturePortraitExtraMeta(),
       visualPresentationEnabled: visualPresentationEnabled.value,
@@ -1031,11 +1209,19 @@ export function usePackEditor() {
   }
 
   function restoreDraftSnapshot(snapshot: PackDraftSnapshot): void {
+    characterCardImportReport.value = null
     cancelDebouncedSimpleToJson()
     manifestText.value = snapshot.manifestText
     settingsText.value = snapshot.settingsText
     corePersonalityText.value = snapshot.corePersonalityText
+    adultExtensionJson.value = snapshot.adultExtensionJson ?? ''
     memorySeedJson.value = snapshot.memorySeedJson ?? ''
+    configJsonText.value = snapshot.configJsonText
+      ?? buildSimpleConfigJson(false, { enabled: false, backend: 'image' })
+    voiceProfileJson.value = snapshot.voiceProfileJson ?? ''
+    deepCapsuleText.value = snapshot.deepCapsuleText ?? ''
+    systemPromptMarkdown.value = snapshot.systemPromptMarkdown ?? ''
+    polishPromptMarkdown.value = snapshot.polishPromptMarkdown ?? ''
     userIdentityFiles.value = (snapshot.userIdentityFiles ?? []).map((f) => ({ ...f }))
     userIdentitiesIndexJson.value = snapshot.userIdentitiesIndexJson ?? ''
     preservedFiles.value = []
@@ -1096,8 +1282,10 @@ export function usePackEditor() {
     authorIncludeSuggestedUi.value = snapshot.authorIncludeSuggestedUi
     authorSuggestedBackendsJson.value = snapshot.authorSuggestedBackendsJson
     Object.assign(uiConfig, snapshot.uiConfig)
+    uiJsonSource.value = snapshot.uiJsonSource ?? ''
+    authorJsonSource.value = snapshot.authorJsonSource ?? ''
     creationMode.value = snapshot.creationMode
-    advancedTab.value = snapshot.advancedTab
+    advancedTab.value = snapshot.advancedTab === 'settings' ? 'manifest' : snapshot.advancedTab
     if (snapshot.sceneEditorEntries?.length) {
       applySceneEditorEntries(snapshot.sceneEditorEntries)
     } else {
@@ -1112,7 +1300,13 @@ export function usePackEditor() {
     manifestText,
     settingsText,
     corePersonalityText,
+    adultExtensionJson,
     memorySeedJson,
+    configJsonText,
+    voiceProfileJson,
+    deepCapsuleText,
+    systemPromptMarkdown,
+    polishPromptMarkdown,
     userIdentityFiles,
     userIdentitiesIndexJson,
     worldKnowledgeTexts,
@@ -1139,6 +1333,7 @@ export function usePackEditor() {
     lastExportedRolesRoot,
     lastMessage,
     lastMessageIsError,
+    characterCardImportReport,
     requireChecksBeforeExport,
     syncFormWarning,
     creationMode,
@@ -1153,7 +1348,9 @@ export function usePackEditor() {
     manifestRoleId,
     bindPackSession,
     runValidate,
+    canEnterAdultEditor,
     onImportPack,
+    onImportCharacterCard,
     onPortraitSlotPick,
     onPortraitSlotClear,
     clearPortraitSlots,

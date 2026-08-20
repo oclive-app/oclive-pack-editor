@@ -14,6 +14,7 @@ import {
 import { parseUiConfigJson } from './uiConfig'
 import type { UiConfig } from '../types/uiConfig'
 import type { SceneEditorEntry } from '../lib/scenePackUser'
+import type { CharacterCardConversionReport } from './characterCardImport'
 
 export type ApplyLoadedPackInput = {
   roleId: string
@@ -25,10 +26,15 @@ export type ApplyLoadedPackInput = {
   emotionImageFiles?: File[]
   portraitCatalogJson?: string
   configJson?: string
+  adultExtensionJson?: string
   creatorMessage?: string
   uiJson?: string
   authorJson?: string
   memorySeedJson?: string
+  voiceProfileJson?: string
+  deepCapsuleText?: string
+  systemPromptMarkdown?: string
+  polishPromptMarkdown?: string
   userIdentityFiles?: RolePackTextFile[]
   userIdentitiesIndexJson?: string
   preservedFiles?: RolePackBinaryFile[]
@@ -48,19 +54,28 @@ export type ApplyLoadedPackTargets = {
   visualPresentationEnabled: { value: boolean }
   visualPresentationBackend: { value: string }
   visualPresentationLive2dModel: { value: string }
+  adultExtensionJson?: { value: string }
   creatorMessageToOthers: { value: string }
   creatorMessageMode: { value: CreatorMessageExportMode }
   uiConfig: UiConfig
+  uiJsonSource?: { value: string }
+  authorJsonSource?: { value: string }
   authorSummary: { value: string }
   authorDetailMarkdown: { value: string }
   authorRecommendedRows: { value: AuthorRecRow[] }
   authorIncludeSuggestedUi: { value: boolean }
   authorSuggestedBackendsJson: { value: string }
   memorySeedJson?: { value: string }
+  configJsonText?: { value: string }
+  voiceProfileJson?: { value: string }
+  deepCapsuleText?: { value: string }
+  systemPromptMarkdown?: { value: string }
+  polishPromptMarkdown?: { value: string }
   userIdentityFiles?: { value: RolePackTextFile[] }
   userIdentitiesIndexJson?: { value: string }
   preservedFiles?: { value: RolePackBinaryFile[] }
   preservedBlueprintFields?: { value: Record<string, unknown> }
+  characterCardImportReport?: { value: CharacterCardConversionReport | null }
   applyKnowledgeBundle?: (files: KnowledgeMarkdownFile[], legacyWorldBody?: string) => void
   applySceneEditorEntries?: (entries: SceneEditorEntry[]) => void
   syncFormsFromJson: () => void
@@ -77,10 +92,15 @@ export function importedPackToApplyInput(imp: ImportedRolePack): ApplyLoadedPack
     emotionImageFiles: imp.emotionImageFiles,
     portraitCatalogJson: imp.portraitCatalogJson,
     configJson: imp.configJson,
+    adultExtensionJson: imp.adultExtensionJson,
     creatorMessage: imp.creatorMessage,
     uiJson: imp.uiJson,
     authorJson: imp.authorJson,
     memorySeedJson: imp.memorySeedJson,
+    voiceProfileJson: imp.voiceProfileJson,
+    deepCapsuleText: imp.deepCapsuleText,
+    systemPromptMarkdown: imp.systemPromptMarkdown,
+    polishPromptMarkdown: imp.polishPromptMarkdown,
     userIdentityFiles: imp.userIdentityFiles,
     userIdentitiesIndexJson: imp.userIdentitiesIndexJson,
     preservedFiles: imp.preservedFiles,
@@ -91,12 +111,22 @@ export function importedPackToApplyInput(imp: ImportedRolePack): ApplyLoadedPack
 
 /** 将 zip 导入或磁盘加载结果写入编写器状态（与 usePackEditor.onImportPack 共用）。 */
 export function applyLoadedPackToEditor(input: ApplyLoadedPackInput, targets: ApplyLoadedPackTargets): void {
+  if (targets.characterCardImportReport) targets.characterCardImportReport.value = null
   targets.manifestText.value = input.manifestJson
   targets.settingsText.value = input.settingsJson
   targets.corePersonalityText.value =
     (input.corePersonality ?? '').trim() || DEFAULT_CORE_PERSONALITY_TEXT
   targets.worldviewMarkdown.value = input.worldviewMarkdown ?? ''
   if (targets.memorySeedJson) targets.memorySeedJson.value = input.memorySeedJson ?? ''
+  if (targets.configJsonText) targets.configJsonText.value = input.configJson ?? ''
+  if (targets.voiceProfileJson) targets.voiceProfileJson.value = input.voiceProfileJson ?? ''
+  if (targets.deepCapsuleText) targets.deepCapsuleText.value = input.deepCapsuleText ?? ''
+  if (targets.systemPromptMarkdown) {
+    targets.systemPromptMarkdown.value = input.systemPromptMarkdown ?? ''
+  }
+  if (targets.polishPromptMarkdown) {
+    targets.polishPromptMarkdown.value = input.polishPromptMarkdown ?? ''
+  }
   if (targets.userIdentityFiles) {
     targets.userIdentityFiles.value = (input.userIdentityFiles ?? []).map((f) => ({ ...f }))
   }
@@ -136,7 +166,11 @@ export function applyLoadedPackToEditor(input: ApplyLoadedPackInput, targets: Ap
   targets.visualPresentationEnabled.value = cfg.visual.enabled
   targets.visualPresentationBackend.value = cfg.visual.backend
   targets.visualPresentationLive2dModel.value = cfg.visual.live2dModel ?? ''
+  if (targets.adultExtensionJson)
+    targets.adultExtensionJson.value = input.adultExtensionJson ?? ''
   targets.creatorMessageToOthers.value = input.creatorMessage ?? ''
+  if (targets.uiJsonSource) targets.uiJsonSource.value = input.uiJson ?? ''
+  if (targets.authorJsonSource) targets.authorJsonSource.value = input.authorJson ?? ''
   Object.assign(targets.uiConfig, parseUiConfigJson(input.uiJson?.trim() || '{}'))
 
   if (input.authorJson?.trim()) {
@@ -174,13 +208,14 @@ export function applyLoadedPackToEditor(input: ApplyLoadedPackInput, targets: Ap
   targets.syncFormsFromJson()
 }
 
-/** 检测 blueprint 是否含编写器不编辑的扩展字段（导出 rebuild 可能丢失）。 */
+/** 检测 blueprint 是否含编写器只读保留的扩展字段。 */
 export function blueprintHasEditorExtensions(blueprintJson: string): boolean {
   try {
     const bp = JSON.parse(blueprintJson) as Record<string, unknown>
     if (Array.isArray(bp.includes) && bp.includes.length > 0) return true
     if (bp.groups != null && typeof bp.groups === 'object') return true
     if (bp.expert_overlay != null) return true
+    if (bp.extensions != null && typeof bp.extensions === 'object') return true
   } catch {
     /* ignore */
   }

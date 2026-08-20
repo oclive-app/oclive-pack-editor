@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { useI18n } from "vue-i18n";
+import { computed, nextTick, onMounted, onUnmounted, ref, useId, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 const props = defineProps<{
   /** 点击问号后显示的说明；可用连续两个换行分段，或传 `paragraphs` */
@@ -25,6 +25,43 @@ const { t } = useI18n()
 
 const open = ref(false)
 const root = ref<HTMLElement | null>(null)
+const trigger = ref<HTMLElement | null>(null)
+const popover = ref<HTMLElement | null>(null)
+const popoverId = `help-hint-${useId().replaceAll(':', '')}`
+const popoverStyle = ref({ top: '0px', left: '0px' })
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), Math.max(min, max))
+}
+
+function updatePopoverPosition(): void {
+  if (!open.value || !trigger.value || !popover.value) return
+
+  const viewportMargin = 12
+  const gap = 8
+  const triggerRect = trigger.value.getBoundingClientRect()
+  const popoverRect = popover.value.getBoundingClientRect()
+  const left = clamp(
+    triggerRect.left,
+    viewportMargin,
+    window.innerWidth - popoverRect.width - viewportMargin,
+  )
+
+  const belowTop = triggerRect.bottom + gap
+  const aboveTop = triggerRect.top - popoverRect.height - gap
+  const roomBelow = window.innerHeight - belowTop - viewportMargin
+  const roomAbove = triggerRect.top - gap - viewportMargin
+  const preferredTop = popoverRect.height > roomBelow && roomAbove > roomBelow ? aboveTop : belowTop
+
+  popoverStyle.value = {
+    left: `${Math.round(left)}px`,
+    top: `${Math.round(clamp(
+      preferredTop,
+      viewportMargin,
+      window.innerHeight - popoverRect.height - viewportMargin,
+    ))}px`,
+  }
+}
 
 function toggle(e: Event) {
   e.stopPropagation()
@@ -33,38 +70,65 @@ function toggle(e: Event) {
 
 function onDocClick(e: MouseEvent) {
   if (!open.value) return
-  const el = root.value
-  if (el && !el.contains(e.target as Node)) open.value = false
+  const target = e.target as Node
+  if (root.value?.contains(target) || popover.value?.contains(target)) return
+  open.value = false
 }
 
 function onDocKeydown(e: KeyboardEvent) {
   if (e.key === 'Escape') open.value = false
 }
 
+function onViewportChange(): void {
+  updatePopoverPosition()
+}
+
+watch(open, async (isOpen) => {
+  if (!isOpen) return
+  await nextTick()
+  updatePopoverPosition()
+})
+
 onMounted(() => {
   document.addEventListener('click', onDocClick)
   document.addEventListener('keydown', onDocKeydown)
+  window.addEventListener('resize', onViewportChange)
+  window.addEventListener('scroll', onViewportChange, true)
 })
 onUnmounted(() => {
   document.removeEventListener('click', onDocClick)
   document.removeEventListener('keydown', onDocKeydown)
+  window.removeEventListener('resize', onViewportChange)
+  window.removeEventListener('scroll', onViewportChange, true)
 })
 </script>
 
 <template>
-  <span ref="root" class="help-hint" :class="{ 'help-hint--open': open }">
+  <span ref="root" class="help-hint">
     <button
+      ref="trigger"
       type="button"
       class="help-btn"
       :aria-expanded="open"
+      :aria-controls="open && segments.length ? popoverId : undefined"
+      :aria-describedby="open && segments.length ? popoverId : undefined"
       :aria-label="String(t('helpHint.ariaLabel'))"
       @click="toggle"
     >
       ?
     </button>
-    <div v-if="open && segments.length" class="help-pop" role="tooltip">
-      <p v-for="(seg, i) in segments" :key="i" class="help-pop-p">{{ seg }}</p>
-    </div>
+    <Teleport to="body">
+      <div
+        v-if="open && segments.length"
+        :id="popoverId"
+        ref="popover"
+        class="help-pop"
+        role="tooltip"
+        :style="popoverStyle"
+      >
+        <p v-for="(seg, i) in segments" :key="i" class="help-pop-p">{{ seg }}</p>
+      </div>
+    </Teleport>
   </span>
 </template>
 
@@ -75,11 +139,6 @@ onUnmounted(() => {
   vertical-align: middle;
   margin-left: 0.3rem;
   position: relative;
-  z-index: 900;
-}
-
-.help-hint.help-hint--open {
-  z-index: 980;
 }
 
 .help-btn {
@@ -120,10 +179,9 @@ onUnmounted(() => {
 }
 
 .help-pop {
-  position: absolute;
-  left: 0;
-  top: calc(100% + 8px);
-  z-index: 901;
+  position: fixed;
+  z-index: 90;
+  width: max-content;
   min-width: min(20rem, calc(100vw - 2rem));
   max-width: min(34rem, calc(100vw - 1.5rem));
   padding: 0.7rem 0.95rem;
@@ -131,9 +189,9 @@ onUnmounted(() => {
   font-weight: 400;
   line-height: 1.55;
   color: var(--fluent-text-primary);
-  background: color-mix(in srgb, var(--fluent-bg-card) 84%, transparent);
-  backdrop-filter: blur(10px) saturate(108%);
-  -webkit-backdrop-filter: blur(10px) saturate(108%);
+  background: color-mix(in srgb, var(--fluent-bg-card) 96%, transparent);
+  backdrop-filter: blur(12px) saturate(108%);
+  -webkit-backdrop-filter: blur(12px) saturate(108%);
   border: 1px solid var(--fluent-border-stroke);
   border-radius: var(--fluent-radius-lg);
   box-shadow:

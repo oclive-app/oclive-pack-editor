@@ -10,6 +10,7 @@ import {
   normalizeKnowledgeGlob,
   settingsRecordToSimpleForm,
 } from './simpleCreation'
+import { EDITOR_PACK_REPLY_QUALITY_ANCHOR } from './replyQualityAnchorPreset'
 
 describe('simpleCreation', () => {
   it('merges manifest and preserves extra keys', () => {
@@ -97,6 +98,22 @@ describe('simpleCreation', () => {
     expect(JSON.parse(sOut).knowledge).toEqual({ enabled: false, glob: 'knowledge/custom/*.md' })
   })
 
+  it('keeps model selection in Chat Pro and exports only the Ollama fallback', () => {
+    const form = defaultSimpleSettingsForm()
+    const out = JSON.parse(applySimpleSettingsToJson(JSON.stringify({
+      model: 'local-model',
+      ollama_model: 'another-local-model',
+      plugin_backends: {
+        llm: 'remote',
+        directory_plugins: { llm: 'com.example.private-runtime' },
+      },
+    }), form, { enabled: true, glob: 'knowledge/**/*.md' }))
+    expect(out.model).toBeUndefined()
+    expect(out.ollama_model).toBeUndefined()
+    expect(out.plugin_backends.llm).toBe('ollama')
+    expect(out.plugin_backends.directory_plugins?.llm).toBeUndefined()
+  })
+
   it('settings evolution personality_source and max_change_per_event roundtrip', () => {
     const base = JSON.stringify({
       evolution: {
@@ -120,5 +137,47 @@ describe('simpleCreation', () => {
     expect(o.evolution.max_change_per_event).toBe(0.12)
     expect(o.evolution.ai_analysis_interval).toBe(20)
     expect(o.evolution.max_total_change).toBe(0.4)
+  })
+
+  it('simple mode writes the recommended reply optimization by default', () => {
+    const form = defaultSimpleSettingsForm()
+    expect(form.customReplyQualityEnabled).toBe(false)
+
+    const out = JSON.parse(
+      applySimpleSettingsToJson('{}', form, {
+        enabled: true,
+        glob: 'knowledge/**/*.md',
+      }),
+    ) as Record<string, unknown>
+
+    expect(out.reply_quality_anchor).toBe(EDITOR_PACK_REPLY_QUALITY_ANCHOR)
+  })
+
+  it('simple mode roundtrips a custom reply optimization', () => {
+    const form = settingsRecordToSimpleForm({ reply_quality_anchor: '角色每轮先行动。' })
+    expect(form.customReplyQualityEnabled).toBe(true)
+    expect(form.replyQualityAnchor).toBe('角色每轮先行动。')
+
+    const out = JSON.parse(
+      applySimpleSettingsToJson('{}', form, {
+        enabled: true,
+        glob: 'knowledge/**/*.md',
+      }),
+    ) as Record<string, unknown>
+    expect(out.reply_quality_anchor).toBe('角色每轮先行动。')
+  })
+
+  it('blank custom reply optimization falls back to the recommended text', () => {
+    const form = defaultSimpleSettingsForm()
+    form.customReplyQualityEnabled = true
+    form.replyQualityAnchor = '  '
+
+    const out = JSON.parse(
+      applySimpleSettingsToJson('{}', form, {
+        enabled: true,
+        glob: 'knowledge/**/*.md',
+      }),
+    ) as Record<string, unknown>
+    expect(out.reply_quality_anchor).toBe(EDITOR_PACK_REPLY_QUALITY_ANCHOR)
   })
 })

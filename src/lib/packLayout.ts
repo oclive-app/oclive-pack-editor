@@ -1,6 +1,6 @@
 /**
  * On disk, `OCLIVE_ROLES_DIR` points at the **roles root** (the folder whose children are `role_id/`).
- * v2 layout: `{roleId}/pipeline.ocblueprint`, …
+ * Blueprint layout: `{roleId}/pipeline.ocblueprint` (v2 or Stable v4), …
  */
 
 import { PIPELINE_BLUEPRINT_FILENAME } from './blueprintV2'

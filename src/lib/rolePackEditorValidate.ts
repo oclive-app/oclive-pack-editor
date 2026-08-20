@@ -1,13 +1,13 @@
 /**
- * 角色包编辑器侧校验：构建 v2 蓝图并与 oclive_validation BlueprintV2 profile 对齐。
+ * 角色包编辑器侧校验：构建 Stable v4 蓝图并与 oclive_validation 版本路由对齐。
  */
 
 import {
-  buildBlueprintV2FromLegacy,
-  validateBlueprintV2Typescript,
+  buildBlueprintFromLegacy,
+  validateBlueprintTypescript,
 } from './blueprintV2'
 import { validateEditorPack, validateMinRuntimeVersion, type ManifestInput, type SettingsInput } from './validation'
-import { invoke } from '@tauri-apps/api/core'
+import { invoke, isTauri } from '@tauri-apps/api/core'
 
 /** 与 `oclive_validation::disk_role_settings::CURRENT_SETTINGS_SCHEMA_VERSION` 一致 */
 export const ROLE_PACK_SETTINGS_SCHEMA_VERSION = 1
@@ -62,9 +62,9 @@ export function validateRolePackTypescript(
   const minErr = validateMinRuntimeVersion(mr.min_runtime_version, hostVersion)
   if (minErr) errors.push(minErr)
 
-  const bp = buildBlueprintV2FromLegacy(mr, settingsRecord)
+  const bp = buildBlueprintFromLegacy(mr, settingsRecord)
   const roleId = String(mr.id ?? bp.meta.id ?? '').trim()
-  errors.push(...validateBlueprintV2Typescript(bp, roleId || undefined))
+  errors.push(...validateBlueprintTypescript(bp, roleId || undefined))
 
   return errors
 }
@@ -122,7 +122,11 @@ export type RolePackEditorValidateResult = {
   usedWasm: boolean
 }
 
-/** 桌面版优先走 Tauri `validate_blueprint_v2_json`（与 pack validate 默认 profile 同源）。 */
+/**
+ * Desktop editor-state baseline. The Tauri command keeps its historical v2
+ * name for IPC compatibility; final export-directory validation dispatches
+ * the exact v2/v3/v4 contract.
+ */
 export async function validateRolePackEditorState(
   manifestJson: string,
   settingsJson: string | null,
@@ -137,12 +141,16 @@ export async function validateRolePackEditorState(
     return { ok: false, errors: allErrors, usedWasm: false }
   }
 
-  if (typeof window !== 'undefined' && '__TAURI__' in window) {
+  if (typeof window !== 'undefined' && isTauri()) {
     try {
       const manifest = JSON.parse(manifestJson) as Record<string, unknown>
+      const legacyValidationSettings = JSON.parse(settingsJson ?? '{}') as Record<string, unknown>
+      // Historical desktop IPC validates the legacy v2 projection. Stable v4
+      // inference_profile is already validated above by the v4 TypeScript path.
+      delete legacyValidationSettings.inference_profile
       await invoke('validate_blueprint_v2_json', {
         manifestText: manifestJson,
-        settingsText: settingsJson ?? '{}',
+        settingsText: JSON.stringify(legacyValidationSettings),
         mergedSceneIds,
         hostRuntimeVersion: hostVersion,
         roleId: String(manifest.id ?? '').trim(),

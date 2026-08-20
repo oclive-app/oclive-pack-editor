@@ -66,11 +66,31 @@ function closeMenus(): void {
 function updateMenuPosition(): void {
   const btn = openMenu.value === 'locale' ? localeToggle.value : themeToggle.value
   if (!btn) return
+  const viewportMargin = 8
+  const gap = 4
   const rect = btn.getBoundingClientRect()
-  const menuWidth = Math.max(rect.width, 168)
+  const menuWidth = Math.min(Math.max(rect.width, 168), window.innerWidth - viewportMargin * 2)
+  const menu = document.querySelector<HTMLElement>(
+    `.pack-shell-menu-dropdown[data-menu-kind="${openMenu.value}"]`,
+  )
+  const menuHeight = menu?.getBoundingClientRect().height ?? 0
+  const belowTop = rect.bottom + gap
+  const aboveTop = rect.top - menuHeight - gap
+  const preferredTop = menuHeight > 0 && belowTop + menuHeight > window.innerHeight - viewportMargin
+    ? Math.max(viewportMargin, aboveTop)
+    : belowTop
+  const top = menuHeight > 0
+    ? Math.min(
+        Math.max(viewportMargin, preferredTop),
+        Math.max(viewportMargin, window.innerHeight - menuHeight - viewportMargin),
+      )
+    : preferredTop
   menuStyle.value = {
-    top: `${rect.bottom + 4}px`,
-    left: `${Math.max(8, rect.right - menuWidth)}px`,
+    top: `${Math.round(top)}px`,
+    left: `${Math.round(Math.min(
+      Math.max(viewportMargin, rect.right - menuWidth),
+      window.innerWidth - menuWidth - viewportMargin,
+    ))}px`,
     minWidth: `${menuWidth}px`,
   }
 }
@@ -152,6 +172,7 @@ onBeforeUnmount(() => {
       <div
         v-if="openMenu === 'locale'"
         class="pack-shell-menu-dropdown pha-export-menu--teleport"
+        data-menu-kind="locale"
         role="menu"
         :aria-label="String(t('packEditor.shellMenu.localeMenuAria'))"
         :style="{
@@ -178,6 +199,7 @@ onBeforeUnmount(() => {
       <div
         v-if="openMenu === 'theme'"
         class="pack-shell-menu-dropdown pha-export-menu--teleport"
+        data-menu-kind="theme"
         role="menu"
         :aria-label="String(t('packEditor.shellMenu.themeMenuAria'))"
         :style="{
@@ -272,12 +294,29 @@ onBeforeUnmount(() => {
 </style>
 
 <style>
+.pack-shell-menu-dropdown {
+  box-sizing: border-box;
+  max-width: calc(100vw - 1rem);
+  max-height: min(70vh, 22rem);
+  overflow-y: auto;
+  padding: 0.3rem;
+  border: 1px solid var(--fluent-border-stroke);
+  border-radius: var(--fluent-radius-lg);
+  background: color-mix(in srgb, var(--fluent-bg-card) 92%, transparent);
+  backdrop-filter: blur(12px) saturate(110%);
+  -webkit-backdrop-filter: blur(12px) saturate(110%);
+  box-shadow:
+    var(--fluent-shadow-card),
+    0 14px 32px color-mix(in srgb, var(--fluent-text-primary) 12%, transparent);
+}
+
 .pack-shell-menu-dropdown .psm-menu-item {
   display: block;
   width: 100%;
   padding: 0.45rem 0.85rem 0.45rem 0.75rem;
   border: none;
   border-left: 3px solid transparent;
+  border-radius: calc(var(--fluent-radius-lg) - 0.3rem);
   background: transparent;
   color: var(--fluent-text-primary);
   font-size: 0.8125rem;

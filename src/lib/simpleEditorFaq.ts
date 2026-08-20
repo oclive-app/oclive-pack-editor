@@ -76,11 +76,11 @@ export const SIMPLE_MANIFEST_FAQ: readonly AdvFaqItem[] = [
 export const SIMPLE_SETTINGS_FAQ: readonly AdvFaqItem[] = [
   {
     id: 'ss-brain',
-    question: '我只想本机跑模型，要选哪个？',
-    plainExplain: '选本机 Ollama，模型名填你终端里能跑的那个。云端要另配环境，零基础先别折腾。',
-    beforeCode: `推理方式：本机 Ollama`,
-    afterCode: `推理方式：本机 Ollama\n模型名：qwen2.5:7b`,
-    highlightAfter: ['qwen2.5'],
+    question: '本机模型和 GGUF 在哪里选？',
+    plainExplain: '在 Chat Pro 设置页统一选择。角色包编写器只写可移植的理想配置，不复制当前电脑的模型、路径或运行参数。',
+    beforeCode: `角色包：写入本机模型路径`,
+    afterCode: `角色包：理想推理配置\nChat Pro：实际模型与 GGUF`,
+    highlightAfter: ['Chat Pro'],
   },
   {
     id: 'ss-eif',

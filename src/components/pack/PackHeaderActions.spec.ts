@@ -44,6 +44,17 @@ describe('PackHeaderActions (Phase 1 header tools)', () => {
     expect(w.emitted('exportOcpak')).toHaveLength(1)
   })
 
+  it('emits exportOcpakAs from the save-as button', async () => {
+    const w = mount(PackHeaderActions, {
+      props: {
+        folderExportOk: false,
+      },
+      global: { plugins: [i18n] },
+    })
+    await w.find('.pha-btn--export-as').trigger('click')
+    expect(w.emitted('exportOcpakAs')).toHaveLength(1)
+  })
+
   it('emits exportFolder when folder export supported', async () => {
     const w = mount(PackHeaderActions, {
       props: {

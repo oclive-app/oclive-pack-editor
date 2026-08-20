@@ -9,13 +9,32 @@ type TauriConfig = {
       devCsp?: string
     }
   }
+  plugins?: {
+    dialog?: unknown
+  }
+}
+
+type TauriCapability = {
+  permissions?: string[]
 }
 
 const config = JSON.parse(
   readFileSync(resolve(process.cwd(), 'src-tauri/tauri.conf.json'), 'utf8'),
 ) as TauriConfig
+const capability = JSON.parse(
+  readFileSync(resolve(process.cwd(), 'src-tauri/capabilities/main.json'), 'utf8'),
+) as TauriCapability
 
 describe('Tauri CSP boundary', () => {
+  it('does not configure the unit-valued dialog plugin as an object', () => {
+    expect(config.plugins?.dialog).toBeUndefined()
+  })
+
+  it('grants folder selection without retaining the unused dialog confirmation permission', () => {
+    expect(capability.permissions).toContain('dialog:allow-open')
+    expect(capability.permissions).not.toContain('dialog:allow-confirm')
+  })
+
   it('keeps production CSP free of development and runtime endpoints', () => {
     const csp = config.app?.security?.csp ?? ''
     expect(csp).toContain("default-src 'self'")

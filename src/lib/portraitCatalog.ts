@@ -117,6 +117,52 @@ export function buildSimpleConfigJson(
   }, null, 2)}\n`
 }
 
+/**
+ * 把编写器负责的立绘/视觉开关合并进现有 config.json。
+ * 其余设施与未知字段原样保留，避免高级编辑或跨版本导入后被覆盖。
+ */
+export function mergeManagedConfigJson(
+  currentRaw: string,
+  portraitEnabled: boolean,
+  visual: VisualPresentationConfig,
+): string {
+  let root: Record<string, unknown>
+  try {
+    const parsed = JSON.parse(currentRaw) as unknown
+    root = parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? { ...(parsed as Record<string, unknown>) }
+      : {}
+  } catch {
+    root = {}
+  }
+
+  const portraitPrevious =
+    root.portrait_catalog && typeof root.portrait_catalog === 'object'
+      ? (root.portrait_catalog as Record<string, unknown>)
+      : {}
+  root.portrait_catalog = { ...portraitPrevious, enabled: portraitEnabled }
+
+  const visualPrevious =
+    root.visual_presentation && typeof root.visual_presentation === 'object'
+      ? (root.visual_presentation as Record<string, unknown>)
+      : {}
+  const resourcesPrevious =
+    visualPrevious.resources && typeof visualPrevious.resources === 'object'
+      ? (visualPrevious.resources as Record<string, unknown>)
+      : {}
+  const resources = { ...resourcesPrevious }
+  if (visual.live2dModel?.trim()) resources.live2d_model = visual.live2dModel.trim()
+  else delete resources.live2d_model
+  root.visual_presentation = {
+    ...visualPrevious,
+    enabled: visual.enabled,
+    backend: visual.backend,
+    ...(Object.keys(resources).length ? { resources } : {}),
+  }
+
+  return `${JSON.stringify(root, null, 2)}\n`
+}
+
 export function parseConfigJson(raw: string | undefined): {
   portraitEnabled: boolean
   visual: VisualPresentationConfig

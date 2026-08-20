@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { PIPELINE_BLUEPRINT_FILENAME, REPLY_QUALITY_ANCHOR_REL_PATH } from './blueprintV2'
-import { buildRolePackFiles, buildRolePackZipBlob } from './exportPack'
+import {
+  buildRolePackFiles,
+  buildRolePackZipBlob,
+  collectRolePackBinaryFilesForExport,
+} from './exportPack'
 
 const baseManifest = {
   id: 'x',
@@ -19,8 +23,9 @@ describe('buildRolePackFiles', () => {
     const bpRaw = files.get(`myrole/${PIPELINE_BLUEPRINT_FILENAME}`)
     expect(bpRaw).toBeDefined()
     expect(files.get('myrole/core_personality.txt')).toBeDefined()
-    const parsed = JSON.parse(bpRaw!) as { meta: { id: string } }
+    const parsed = JSON.parse(bpRaw!) as { schema_version: number; meta: { id: string } }
     expect(parsed.meta.id).toBe('myrole')
+    expect(parsed.schema_version).toBe(4)
   })
 
   it('includes scene placeholders for each manifest scene', () => {
@@ -57,7 +62,7 @@ describe('buildRolePackFiles', () => {
     expect(bp.meta.creator_message_to_downloader).toBe('感谢游玩')
   })
 
-  it('writes reply quality anchor to prompts path and meta.reply_quality_anchor', () => {
+  it('writes reply quality anchor to prompts path and Stable v4 runtime_config', () => {
     const files = buildRolePackFiles(
       'x',
       baseManifest,
@@ -67,8 +72,10 @@ describe('buildRolePackFiles', () => {
     expect(files.get(`x/${REPLY_QUALITY_ANCHOR_REL_PATH}`)).toBe('anchor text\n')
     const bp = JSON.parse(files.get(`x/${PIPELINE_BLUEPRINT_FILENAME}`)!) as {
       meta: { reply_quality_anchor?: string }
+      runtime_config?: { reply_quality_anchor?: string }
     }
-    expect(bp.meta.reply_quality_anchor).toBe('anchor text')
+    expect(bp.meta.reply_quality_anchor).toBeUndefined()
+    expect(bp.runtime_config?.reply_quality_anchor).toBe('anchor text')
   })
 
   it('writes config.json when extra is set', () => {
@@ -88,6 +95,20 @@ describe('buildRolePackFiles', () => {
     expect(files.get('x/user_identities/index.json')).toBe(body)
   })
 
+  it('writes editor-managed prompt, voice, and polish files', () => {
+    const files = buildRolePackFiles('x', baseManifest, { schema_version: 1 }, {
+      voiceProfileJson: '{"schema_version":2}',
+      deepCapsuleText: 'short persona',
+      systemPromptMarkdown: '# authoring aid',
+      polishPromptMarkdown: '# polish preset',
+    })
+    expect(files.get('x/voice_profile.json')).toBe('{"schema_version":2}\n')
+    expect(files.get('x/prompts/deep_capsule.txt')).toBe('short persona\n')
+    expect(files.get('x/prompts/system.md')).toBe('# authoring aid\n')
+    expect(files.get('x/polish_prompt.md')).toBe('# polish preset\n')
+    expect(files.has('x/prompts/.oclive_placeholder.txt')).toBe(false)
+  })
+
   it('writes memory seed and user identity templates independently', () => {
     const memory = '{"schema_version":1,"memories":[],"extensions":{}}\n'
     const files = buildRolePackFiles('x', baseManifest, { schema_version: 1 }, {
@@ -105,15 +126,72 @@ describe('buildRolePackFiles', () => {
   it('preserves blueprint extensions supplied by an imported pack', () => {
     const files = buildRolePackFiles('x', baseManifest, { schema_version: 1 }, {
       preservedBlueprintFields: {
-        includes: [{ path: 'blueprint/includes/routes.json', mode: 'strict' }],
+        includes: [
+          {
+            path: 'blueprint/includes/personality.json',
+            target: 'meta.personality',
+            mode: 'replace',
+          },
+        ],
         runtime_config: { interaction_mode: 'pure_chat' },
       },
     })
     const blueprint = JSON.parse(files.get(`x/${PIPELINE_BLUEPRINT_FILENAME}`)!)
     expect(blueprint.includes).toEqual([
-      { path: 'blueprint/includes/routes.json', mode: 'strict' },
+      {
+        path: 'blueprint/includes/personality.json',
+        target: 'meta.personality',
+        mode: 'replace',
+      },
     ])
     expect(blueprint.runtime_config).toEqual({ interaction_mode: 'pure_chat' })
+  })
+
+  it('keeps imported v2 as v2 and does not invent runtime_config', () => {
+    const files = buildRolePackFiles('x', baseManifest, {
+      schema_version: 1,
+      interaction_mode: 'pure_chat',
+      evolution: { personality_source: 'profile' },
+    }, {
+      preservedBlueprintFields: {
+        schema_version: 2,
+      },
+    })
+    const blueprint = JSON.parse(files.get(`x/${PIPELINE_BLUEPRINT_FILENAME}`)!)
+    expect(blueprint.schema_version).toBe(2)
+    expect(blueprint.runtime_config).toBeUndefined()
+    expect(blueprint.meta.interaction_mode).toBe('pure_chat')
+    expect(blueprint.meta.evolution).toEqual({ personality_source: 'profile' })
+  })
+
+  it('roundtrips v4 extension declarations and their opaque payload file', async () => {
+    const extensionId = 'com.example.live2d'
+    const configRef = `blueprint/extensions/${extensionId}/config.json`
+    const blob = await buildRolePackZipBlob('x', baseManifest, { schema_version: 1 }, {
+      preservedBlueprintFields: {
+        schema_version: 4,
+        extensions: {
+          [extensionId]: {
+            capability: extensionId,
+            required: false,
+            config_schema_version: 7,
+            config_ref: configRef,
+          },
+        },
+      },
+      preservedFiles: [
+        {
+          relPath: configRef,
+          file: new File(['{"vendor_specific":{"gain":0.8}}'], 'config.json'),
+        },
+      ],
+    })
+    const zip = await (await import('jszip')).default.loadAsync(blob)
+    const blueprint = JSON.parse(
+      (await zip.file(`x/${PIPELINE_BLUEPRINT_FILENAME}`)?.async('string'))!,
+    )
+    expect(blueprint.extensions[extensionId].config_schema_version).toBe(7)
+    expect(await zip.file(`x/${configRef}`)?.async('string')).toContain('vendor_specific')
   })
 
   it('preserves multi-instance slots and unknown meta fields when rebuilding', () => {
@@ -138,6 +216,32 @@ describe('buildRolePackFiles', () => {
     expect(blueprint.slot_registry.llm_remote.url).toBe('https://llm.invalid')
   })
 
+  it('preserves imported host model config while merging creator inference values', () => {
+    const files = buildRolePackFiles(
+      'x',
+      baseManifest,
+      {
+        schema_version: 1,
+        interaction_mode: 'pure_chat',
+        inference_profile: { generation: { temperature: 0.75 } },
+      },
+      {
+        preservedBlueprintFields: {
+          schema_version: 4,
+          runtime_config: {
+            interaction_mode: 'immersive',
+            ollama_model: 'legacy-private-model',
+          },
+        },
+      },
+    )
+    const blueprint = JSON.parse(files.get('x/pipeline.ocblueprint')!)
+
+    expect(blueprint.runtime_config.interaction_mode).toBe('pure_chat')
+    expect(blueprint.runtime_config.inference_profile.generation.temperature).toBe(0.75)
+    expect(blueprint.runtime_config.ollama_model).toBe('legacy-private-model')
+  })
+
   it('roundtrips safe preserved files into zip export', async () => {
     const blob = await buildRolePackZipBlob('x', baseManifest, { schema_version: 1 }, {
       preservedFiles: [
@@ -159,6 +263,27 @@ describe('buildRolePackFiles', () => {
     expect(await zip.file('x/voice_profile.json')?.async('string')).toBe('{"schema_version":1}')
     expect(zip.file('escape.txt')).toBeNull()
     expect(await zip.file('x/core_personality.txt')?.async('string')).not.toBe('must not overwrite')
+  })
+
+  it('uses one collision policy where editor-managed outputs win', () => {
+    const staleConfig = new File(['{"stale":true}'], 'config.json')
+    const extensionConfig = new File(['{"opaque":true}'], 'config.json')
+    const result = collectRolePackBinaryFilesForExport(
+      'x',
+      ['x/config.json', 'x/core_personality.txt'],
+      {
+        preservedFiles: [
+          { relPath: 'config.json', file: staleConfig },
+          {
+            relPath: 'blueprint/extensions/com.example.live2d/config.json',
+            file: extensionConfig,
+          },
+        ],
+      },
+    )
+    expect(result.map((file) => file.relPath)).toEqual([
+      'blueprint/extensions/com.example.live2d/config.json',
+    ])
   })
 
   it('writes featured and preset_order into blueprint meta', () => {

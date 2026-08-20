@@ -17,6 +17,8 @@ function addScene(): void {
       displayName: base,
       activitySetting: '',
       scenePrompt: '',
+      welcomeMessage: '',
+      monologues: [],
     },
   ]
 }
@@ -32,6 +34,18 @@ function onSceneIdInput(index: number, raw: string): void {
   if (!item) return
   next[index] = { ...item, sceneId: normalizeSceneId(raw) || item.sceneId }
   entries.value = next
+}
+
+function addMonologue(index: number): void {
+  const entry = entries.value[index]
+  if (!entry) return
+  entry.monologues = [...(entry.monologues ?? []), '']
+}
+
+function removeMonologue(sceneIndex: number, monologueIndex: number): void {
+  const entry = entries.value[sceneIndex]
+  if (!entry) return
+  entry.monologues = (entry.monologues ?? []).filter((_, index) => index !== monologueIndex)
 }
 </script>
 
@@ -100,6 +114,50 @@ function onSceneIdInput(index: number, raw: string): void {
           :placeholder="t('sceneEditor.scenePromptPlaceholder')"
         />
         <p class="field-file">{{ t('sceneEditor.scenePromptPath', { id: entry.sceneId || '…' }) }}</p>
+      </div>
+
+      <div class="field-block">
+        <label class="field-label">{{ t('sceneEditor.welcomeMessageLabel') }}</label>
+        <p class="field-hint">{{ t('sceneEditor.welcomeMessageHint') }}</p>
+        <textarea
+          v-model="entry.welcomeMessage"
+          class="field-ta"
+          rows="4"
+          spellcheck="true"
+          :placeholder="t('sceneEditor.welcomeMessagePlaceholder')"
+        />
+      </div>
+
+      <div class="field-block">
+        <div class="monologue-heading">
+          <div>
+            <label class="field-label">{{ t('sceneEditor.monologuesLabel') }}</label>
+            <p class="field-hint">{{ t('sceneEditor.monologuesHint') }}</p>
+          </div>
+          <button type="button" class="btn-add" @click="addMonologue(index)">
+            {{ t('sceneEditor.addMonologue') }}
+          </button>
+        </div>
+        <div
+          v-for="(_, monologueIndex) in entry.monologues ?? []"
+          :key="monologueIndex"
+          class="monologue-row"
+        >
+          <textarea
+            v-model="entry.monologues![monologueIndex]"
+            class="field-ta"
+            rows="3"
+            spellcheck="true"
+            :aria-label="String(t('sceneEditor.monologueAria', { index: monologueIndex + 1 }))"
+          />
+          <button
+            type="button"
+            class="btn-remove"
+            @click="removeMonologue(index, monologueIndex)"
+          >
+            {{ t('sceneEditor.removeMonologue') }}
+          </button>
+        </div>
       </div>
     </div>
 
@@ -208,5 +266,17 @@ function onSceneIdInput(index: number, raw: string): void {
   border: 1px dashed var(--fluent-border-control);
   background: transparent;
   cursor: pointer;
+}
+.monologue-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.monologue-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 0.5rem;
 }
 </style>

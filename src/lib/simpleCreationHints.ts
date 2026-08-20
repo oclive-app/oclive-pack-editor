@@ -5,7 +5,7 @@
 /** 整个「基础」分区：简单创作在干什么 */
 export const SIMPLE_BASE_INTRO = [
   '简单创作用表单代替手写 JSON：你填的每一项，保存或导出时会写进角色包里的对应文件。',
-  '本页可填：角色与模型、情绪立绘、世界观与知识边界。场景、事件影响、六槽插件等请到「高级」页签。',
+  '本页可填：角色信息、情绪立绘、世界观与知识边界。理想推理数值、场景和进阶文件请到「高级」页签；实际模型与 GGUF 在 Chat Pro 设置页选择。',
 ] as const
 
 /** 核心性格档案（core_personality.txt） */
@@ -29,7 +29,7 @@ export const SIMPLE_CREATOR_MESSAGE_BODY = [
 
 /** 「进阶」折叠块总述 */
 export const SIMPLE_ADV_FOLD = [
-  '展开后是两列：左边是角色信息（manifest），管名字、场景、性格数字、你和角色的关系、世界观文件、知识库开关等；右边是引擎设置（settings），管用哪个模型、事件影响多大、身份怎么绑定等。',
+  '展开后可编辑角色信息、性格数字、用户关系、世界观与知识库；实际推理后端、模型和 GGUF 不写入角色包，在 Chat Pro 设置页统一选择。',
   '不确定时可以先只改左边展示名和场景；右边涉及对话算法，改完建议在试聊里跑几句再导出。',
 ] as const
 
@@ -87,13 +87,13 @@ export const SIMPLE_KNOWLEDGE = [
 
 /** settings 分区标题 */
 export const SIMPLE_SETTINGS_INTRO = [
-  '这一列会写入 blueprint 的运行时视图（并与 meta 按引擎规则合并）。主要管：对话用哪个模型、事件影响多强、身份跟场景怎么绑定、以及记忆/情绪等插件走内置还是远程。',
+  '这一列会写入 blueprint 的创作者向运行视图，主要描述事件影响、身份绑定与记忆/情绪等周边模块；实际主 LLM、模型和 GGUF 由 Chat Pro 管理。',
 ] as const
 
 export const SIMPLE_BRAIN_LLM = [
-  '「本机 Ollama」：在你电脑上跑模型，下面填的模型名要和 ollama list 里一致。',
-  '「云端 Remote LLM」：包内会标记为远程推理，需要在启动 oclive 时配置侧车地址等环境；零基础建议先用本机。',
-  '这一项决定的是「主对话大脑」走哪条路，不是下面 memory/emotion 那四个小插件。',
+  '简单角色包只保留 Ollama 作为缺省兜底，不在包内选择实际模型。',
+  '请在 Chat Pro 设置页统一选择实际后端、基础模型与 GGUF；换电脑时角色包不需要跟着改本机路径。',
+  '高级创作里的 inference_profile 只描述理想采样、预算和推理倾向，也不会覆盖 Chat Pro 的实际选择。',
 ] as const
 
 export const SIMPLE_SCHEMA_VERSION = [
@@ -139,5 +139,5 @@ export const SIMPLE_REMOTE_PRESENCE = [
 export const SIMPLE_PLUGIN_BACKENDS = [
   'memory / emotion / event / prompt 四类插件决定：记忆怎么存、情绪怎么判、事件怎么算、系统提示怎么组。一般全部选 builtin 即可。',
   'builtin_v2 是新一版内置实现；remote 需要你自己部署对应服务。不确定时保持 builtin，除非你按文档接了远程。',
-  '上面「对话推理」里的 LLM 是主模型；这里是四个周边模块，分工不同。',
+  '实际主 LLM、基础模型与 GGUF 由 Chat Pro 设置页统一管理；这里的四项只是角色包周边模块。',
 ] as const

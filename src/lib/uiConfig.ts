@@ -142,3 +142,36 @@ export function serializeUiConfig(c: UiConfig): string {
   }
   return JSON.stringify(disk, null, 2) + '\n'
 }
+
+/** Serialize editor-managed UI fields while preserving unknown future keys. */
+export function mergeUiConfigJson(currentRaw: string, config: UiConfig): string {
+  let current: Record<string, unknown> = {}
+  try {
+    const value = JSON.parse(currentRaw) as unknown
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      current = { ...(value as Record<string, unknown>) }
+    }
+  } catch {
+    /* invalid source falls back to the editor-managed shape */
+  }
+  const managed = JSON.parse(serializeUiConfig(config)) as Record<string, unknown>
+  const mergeObject = (left: unknown, right: unknown): Record<string, unknown> => ({
+    ...(left && typeof left === 'object' && !Array.isArray(left)
+      ? (left as Record<string, unknown>)
+      : {}),
+    ...(right as Record<string, unknown>),
+  })
+  const currentSlots = mergeObject({}, current.slots)
+  const managedSlots = mergeObject({}, managed.slots)
+  const slots: Record<string, unknown> = { ...currentSlots }
+  for (const [key, value] of Object.entries(managedSlots)) {
+    slots[key] = mergeObject(currentSlots[key], value)
+  }
+  return `${JSON.stringify({
+    ...current,
+    shell: managed.shell,
+    theme: mergeObject(current.theme, managed.theme),
+    layout: mergeObject(current.layout, managed.layout),
+    slots,
+  }, null, 2)}\n`
+}

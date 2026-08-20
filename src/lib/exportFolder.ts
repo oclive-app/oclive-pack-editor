@@ -1,7 +1,8 @@
-import { invoke } from '@tauri-apps/api/core'
-import { confirm, open } from '@tauri-apps/plugin-dialog'
+import { invoke, isTauri } from '@tauri-apps/api/core'
+import { open } from '@tauri-apps/plugin-dialog'
 import {
   buildRolePackFiles,
+  collectRolePackBinaryFilesForExport,
   type ExportableManifest,
   type ExportableSettings,
   type PackExtraFiles,
@@ -9,7 +10,7 @@ import {
 import { duplicateRoleFolderConfirmMessage } from './exportErrorMessages'
 
 export function isTauriRuntime(): boolean {
-  return typeof window !== 'undefined' && '__TAURI__' in window
+  return typeof window !== 'undefined' && isTauri()
 }
 
 /** Tauri：检测 roles 根下是否已有 `{roleId}/` 文件夹。 */
@@ -29,13 +30,14 @@ export async function confirmOverwriteExistingRoleDir(
   const exists = await rolePackDirExists(rolesRoot, roleId)
   if (!exists) return true
   const message = duplicateRoleFolderConfirmMessage(roleId)
-  if (isTauriRuntime()) {
-    return confirm(message, { title: '覆盖已有角色包？' })
-  }
+  // Use the WebView's native confirmation in both browser and desktop builds.
+  // The dialog plugin is still used for selecting a folder, but routing this
+  // confirmation through it made overwrite fail when the desktop capability
+  // was not available at runtime.
   return window.confirm(message)
 }
 
-function arrayBufferToBase64(buffer: ArrayBuffer): string {
+export function arrayBufferToBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer)
   const chunk = 0x8000
   let binary = ''
@@ -45,33 +47,18 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
   return btoa(binary)
 }
 
-function binaryFilesForExport(extra?: Partial<PackExtraFiles>) {
-  const catalog = extra?.catalogAssets?.length
-    ? extra.catalogAssets
-    : (extra?.emotionImages ?? []).map((f) => ({
-        relPath: `assets/images/${f.name}`,
-        file: f,
-      }))
-  const out: { relPath: string; file: File }[] = []
-  const seen = new Set<string>()
-  for (const item of [...catalog, ...(extra?.preservedFiles ?? [])]) {
-    const relPath = item.relPath.replace(/\\/g, '/').replace(/^\/+/, '')
-    const parts = relPath.split('/')
-    if (!relPath || parts.some((part) => !part || part === '.' || part === '..')) continue
-    if (seen.has(relPath)) continue
-    seen.add(relPath)
-    out.push({ relPath, file: item.file })
-  }
-  return out
-}
-
 async function binaryPayloadForCatalogAssets(
   roleId: string,
+  managedPaths: Iterable<string>,
   extra?: Partial<PackExtraFiles>,
 ): Promise<{ path: string; base64: string }[]> {
   const id = roleId.trim()
   const out: { path: string; base64: string }[] = []
-  for (const { relPath, file } of binaryFilesForExport(extra)) {
+  for (const { relPath, file } of collectRolePackBinaryFilesForExport(
+    id,
+    managedPaths,
+    extra,
+  )) {
     const buf = await file.arrayBuffer()
     out.push({
       path: `${id}/${relPath.replace(/\\/g, '/')}`,
@@ -104,7 +91,11 @@ export async function writePackToRolesRoot(
     await w.write(content)
     await w.close()
   }
-  for (const { relPath, file } of binaryFilesForExport(extra)) {
+  for (const { relPath, file } of collectRolePackBinaryFilesForExport(
+    id,
+    files.keys(),
+    extra,
+  )) {
     const rel = `${id}/${relPath.replace(/\\/g, '/')}`
     const parts = rel.split('/').filter(Boolean)
     let dir: FileSystemDirectoryHandle = rolesRoot
@@ -133,7 +124,7 @@ export async function writePackToRolesRootPath(
     rolesRoot: rolesRootPath,
     files: payload,
   })
-  const bins = await binaryPayloadForCatalogAssets(id, extra)
+  const bins = await binaryPayloadForCatalogAssets(id, files.keys(), extra)
   if (bins.length > 0) {
     await invoke('write_role_pack_binaries', {
       rolesRoot: rolesRootPath,

@@ -7,6 +7,10 @@ export type SceneEditorEntry = {
   activitySetting: string
   /** 角色在此场景的特别 prompt → description.txt */
   scenePrompt: string
+  /** 进入场景时优先显示的开场白 → scene.json welcome_message */
+  welcomeMessage?: string
+  /** 没有固定开场白时可选的候选独白 → scene.json monologues */
+  monologues?: string[]
 }
 
 export type SceneTimeWindow = { start: string; end: string }
@@ -20,6 +24,8 @@ export function emptySceneEntry(sceneId: string): SceneEditorEntry {
     displayName: id,
     activitySetting: '',
     scenePrompt: '',
+    welcomeMessage: '',
+    monologues: [],
   }
 }
 
@@ -75,6 +81,10 @@ export function formatTimeWindowsHint(windows: SceneTimeWindow[]): string {
 export function buildSceneJson(entry: SceneEditorEntry): string {
   const name = entry.displayName.trim() || entry.sceneId
   const body: Record<string, unknown> = { name }
+  const welcomeMessage = entry.welcomeMessage?.trim()
+  if (welcomeMessage) body.welcome_message = welcomeMessage
+  const monologues = (entry.monologues ?? []).map((item) => item.trim()).filter(Boolean)
+  if (monologues.length) body.monologues = monologues
   const activity = entry.activitySetting.trim()
   if (activity) body.activity_setting = activity
   const windows = parseTimeWindowsFromActivity(activity)
@@ -119,6 +129,12 @@ export function parseSceneFromDisk(
       const hint = formatTimeWindowsHint(windows)
       if (hint && !entry.activitySetting) entry.activitySetting = hint
     }
+    if (typeof j.welcome_message === 'string') {
+      entry.welcomeMessage = j.welcome_message.trim()
+    }
+    if (Array.isArray(j.monologues)) {
+      entry.monologues = j.monologues.map(String).map((item) => item.trim()).filter(Boolean)
+    }
   } catch {
     /* ignore malformed scene.json */
   }
@@ -148,6 +164,8 @@ export function sceneEditorHasContent(entries: SceneEditorEntry[]): boolean {
     (e) =>
       e.activitySetting.trim() ||
       e.scenePrompt.trim() ||
+      Boolean(e.welcomeMessage?.trim()) ||
+      Boolean(e.monologues?.some((item) => item.trim())) ||
       (e.displayName.trim() && e.displayName.trim() !== e.sceneId),
   )
 }

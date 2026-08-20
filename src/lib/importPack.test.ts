@@ -26,19 +26,19 @@ describe('isSafePathUnderRole', () => {
 })
 
 describe('importedPackBrainHint', () => {
-  it('mentions launcher when llm is remote', () => {
+  it('points remote packs to Chat Pro settings', () => {
     const j = JSON.stringify({ plugin_backends: { llm: 'remote' } })
-    expect(importedPackBrainHint(j)).toContain('oclive-launcher')
+    expect(importedPackBrainHint(j)).toContain('Chat Pro 设置页')
   })
 
-  it('suggests simple creation when not remote', () => {
+  it('keeps local model selection out of the pack editor', () => {
     const j = JSON.stringify({ plugin_backends: { llm: 'ollama' } })
-    expect(importedPackBrainHint(j)).toContain('简单创作')
+    expect(importedPackBrainHint(j)).toContain('Chat Pro 设置页')
   })
 })
 
 describe('importRolePackFromZip', () => {
-  it('imports minimal valid v2 pack', async () => {
+  it('imports minimal valid Stable v4 pack', async () => {
     const z = new JSZip()
     z.file(`hero/${PIPELINE_BLUEPRINT_FILENAME}`, minimalBlueprintJsonForRole('hero'))
     z.file('hero/core_personality.txt', 'hello')
@@ -49,6 +49,7 @@ describe('importRolePackFromZip', () => {
     expect(r.corePersonality).toContain('hello')
     expect(r.emotionImageFiles).toHaveLength(0)
     expect(r.creatorMessage).toBe('')
+    expect(r.preservedBlueprintFields?.schema_version).toBe(4)
   })
 
   it('rejects legacy manifest-only zip', async () => {
@@ -99,18 +100,94 @@ describe('importRolePackFromZip', () => {
   it('preserves safe extension files and blueprint fields for re-export', async () => {
     const z = new JSZip()
     const blueprint = JSON.parse(minimalBlueprintJsonForRole('hero'))
-    blueprint.includes = [{ path: 'blueprint/includes/routes.json', mode: 'strict' }]
+    blueprint.includes = [
+      {
+        path: 'blueprint/includes/personality.json',
+        target: 'meta.personality',
+        mode: 'replace',
+      },
+    ]
     z.file(`hero/${PIPELINE_BLUEPRINT_FILENAME}`, JSON.stringify(blueprint))
     z.file('hero/core_personality.txt', 'persona')
     z.file('hero/voice_profile.json', '{"schema_version":1}')
-    z.file('hero/blueprint/includes/routes.json', '{"routes":[]}')
+    z.file('hero/blueprint/includes/personality.json', '{"warmth":0.8}')
     const f = await zipToFile(z, 'p.zip')
     const r = await importRolePackFromZip(f)
     expect(r.preservedBlueprintFields?.includes).toEqual(blueprint.includes)
+    expect(r.voiceProfileJson).toBe('{"schema_version":1}')
     expect(r.preservedFiles?.map((x) => x.relPath)).toEqual([
-      'voice_profile.json',
-      'blueprint/includes/routes.json',
+      'blueprint/includes/personality.json',
     ])
+  })
+
+  it('preserves an include payload even when it lives in an editor-classified directory', async () => {
+    const zip = new JSZip()
+    const blueprint = JSON.parse(minimalBlueprintJsonForRole('hero'))
+    blueprint.includes = [
+      {
+        path: 'knowledge/patch.json',
+        target: 'meta.personality',
+        mode: 'merge',
+      },
+    ]
+    zip.file(`hero/${PIPELINE_BLUEPRINT_FILENAME}`, JSON.stringify(blueprint))
+    zip.file('hero/knowledge/patch.json', '{"warmth":0.9}')
+
+    const result = await importRolePackFromZip(await zipToFile(zip, 'include-in-knowledge.zip'))
+
+    expect(result.preservedFiles?.map((file) => file.relPath)).toContain(
+      'knowledge/patch.json',
+    )
+  })
+
+  it('does not duplicate a referenced file already owned by an editor field', async () => {
+    const zip = new JSZip()
+    const blueprint = JSON.parse(minimalBlueprintJsonForRole('hero'))
+    blueprint.includes = [
+      {
+        path: 'config.json',
+        target: 'meta.personality',
+        mode: 'merge',
+      },
+    ]
+    zip.file(`hero/${PIPELINE_BLUEPRINT_FILENAME}`, JSON.stringify(blueprint))
+    zip.file('hero/config.json', '{"memory":{"enabled":true}}')
+
+    const result = await importRolePackFromZip(await zipToFile(zip, 'managed-reference.zip'))
+
+    expect(result.configJson).toContain('"memory"')
+    expect(result.preservedFiles?.map((file) => file.relPath)).not.toContain('config.json')
+  })
+
+  it('preserves an imported v2 schema version without upgrading it', async () => {
+    const z = new JSZip()
+    const blueprint = JSON.parse(minimalBlueprintJsonForRole('hero'))
+    blueprint.schema_version = 2
+    delete blueprint.runtime_config
+    z.file(`hero/${PIPELINE_BLUEPRINT_FILENAME}`, JSON.stringify(blueprint))
+    const result = await importRolePackFromZip(await zipToFile(z, 'v2.zip'))
+    expect(result.preservedBlueprintFields?.schema_version).toBe(2)
+  })
+
+  it('preserves v4 extension declarations and payload files', async () => {
+    const z = new JSZip()
+    const extensionId = 'com.example.live2d'
+    const configRef = `blueprint/extensions/${extensionId}/config.json`
+    const blueprint = JSON.parse(minimalBlueprintJsonForRole('hero'))
+    blueprint.extensions = {
+      [extensionId]: {
+        capability: extensionId,
+        config_schema_version: 1,
+        config_ref: configRef,
+      },
+    }
+    z.file(`hero/${PIPELINE_BLUEPRINT_FILENAME}`, JSON.stringify(blueprint))
+    z.file(`hero/${configRef}`, '{"opaque":true}')
+    const result = await importRolePackFromZip(await zipToFile(z, 'v4.zip'))
+    expect(
+      (result.preservedBlueprintFields?.extensions as Record<string, unknown>)[extensionId],
+    ).toBeDefined()
+    expect(result.preservedFiles?.map((file) => file.relPath)).toContain(configRef)
   })
 
   it('loads emotion images under assets/images', async () => {

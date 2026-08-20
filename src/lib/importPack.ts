@@ -13,14 +13,16 @@ import {
   type SceneEditorEntry,
 } from './scenePackUser'
 import {
+  blueprintReferencedFilePaths,
   blueprintToLegacyParts,
   isLegacyRolePackLayout,
   isV2RolePackLayout,
-  parseBlueprintV2Json,
+  parseBlueprintJson,
   pickEditorPreservedBlueprintFields,
   PIPELINE_BLUEPRINT_FILENAME,
   REPLY_QUALITY_ANCHOR_REL_PATH,
 } from './blueprintV2'
+import { ADULT_EXTENSION_FILENAME } from './adultExtension'
 export type ImportedRolePack = {
   roleId: string
   manifestJson: string
@@ -34,6 +36,8 @@ export type ImportedRolePack = {
   portraitCatalogJson: string
   /** roles/{id}/config.json 全文（可选） */
   configJson: string
+  /** Optional Chat Pro adult-role extension. */
+  adultExtensionJson: string
   /** roles/{id}/creator_message.txt 全文（可含多行，与导出模式一致） */
   creatorMessage: string
   /** roles/{id}/ui.json（可选） */
@@ -42,6 +46,14 @@ export type ImportedRolePack = {
   authorJson: string
   /** roles/{id}/memory_seed.json（可选，只读初始记忆） */
   memorySeedJson?: string
+  /** roles/{id}/voice_profile.json（可选语音侧车） */
+  voiceProfileJson?: string
+  /** roles/{id}/prompts/deep_capsule.txt（可选离线人设胶囊） */
+  deepCapsuleText?: string
+  /** roles/{id}/prompts/system.md（可选创作辅助） */
+  systemPromptMarkdown?: string
+  /** roles/{id}/polish_prompt.md（可选回复润色提示） */
+  polishPromptMarkdown?: string
   /** roles/{id}/user_identities/*.md 模板 */
   userIdentityFiles?: RolePackTextFile[]
   /** roles/{id}/user_identities/index.json */
@@ -84,7 +96,7 @@ function isSafeAssetImageEntry(path: string, roleId: string, prefix: string): bo
   return true
 }
 
-/** 解析 zip：优先 v2 `pipeline.ocblueprint`；legacy manifest 需迁移。 */
+/** 解析 zip：优先 v2 / Stable v4 `pipeline.ocblueprint`；legacy manifest 需迁移。 */
 export async function importRolePackFromZip(file: File): Promise<ImportedRolePack> {
   const zip = await JSZip.loadAsync(file)
   const names = Object.keys(zip.files).filter((n) => !zip.files[n].dir)
@@ -92,7 +104,7 @@ export async function importRolePackFromZip(file: File): Promise<ImportedRolePac
 
   if (isLegacyRolePackLayout(normNames) && !isV2RolePackLayout(normNames)) {
     throw new Error(
-      '压缩包为 legacy manifest.json 格式。请先用 oclive pack migrate-to-blueprint 迁移，或在编写器重新导出 v2 蓝图包。',
+      '压缩包为 legacy manifest.json 格式。请先用 oclive pack migrate-to-blueprint 迁移，或在编写器重新导出蓝图包。',
     )
   }
 
@@ -126,7 +138,7 @@ export async function importRolePackFromZip(file: File): Promise<ImportedRolePac
   const blueprintRaw = await readText(PIPELINE_BLUEPRINT_FILENAME)
   if (!blueprintRaw.trim()) throw new Error('pipeline.ocblueprint 为空')
 
-  const bp = parseBlueprintV2Json(blueprintRaw)
+  const bp = parseBlueprintJson(blueprintRaw)
   const preservedBlueprintFields = pickEditorPreservedBlueprintFields(bp)
   const { manifest, settings } = blueprintToLegacyParts(bp)
   const anchorFromMeta =
@@ -150,6 +162,10 @@ export async function importRolePackFromZip(file: File): Promise<ImportedRolePac
   const uiJson = (await readText('ui.json')).trim()
   const authorJson = (await readText('author.json')).trim()
   const memorySeedJson = await readText('memory_seed.json')
+  const voiceProfileJson = await readText('voice_profile.json')
+  const deepCapsuleText = await readText('prompts/deep_capsule.txt')
+  const systemPromptMarkdown = await readText('prompts/system.md')
+  const polishPromptMarkdown = await readText('polish_prompt.md')
   const userIdentitiesIndexJson = await readText('user_identities/index.json')
   const userIdentityFiles: RolePackTextFile[] = []
   for (const n of names) {
@@ -199,6 +215,7 @@ export async function importRolePackFromZip(file: File): Promise<ImportedRolePac
 
   const portraitCatalogJson = await readText('portrait_catalog.json')
   const configJson = await readText('config.json')
+  const adultExtensionJson = await readText(ADULT_EXTENSION_FILENAME)
 
   const sceneIds = mergedSceneIds(
     Array.isArray(manifest.scenes) ? (manifest.scenes as string[]) : [],
@@ -215,25 +232,42 @@ export async function importRolePackFromZip(file: File): Promise<ImportedRolePac
     PIPELINE_BLUEPRINT_FILENAME,
     'core_personality.txt',
     'memory_seed.json',
+    'voice_profile.json',
+    'prompts/deep_capsule.txt',
+    'prompts/system.md',
+    'polish_prompt.md',
     'creator_message.txt',
     'ui.json',
     'author.json',
     'config.json',
+    ADULT_EXTENSION_FILENAME,
     'portrait_catalog.json',
     'user_identities/index.json',
     REPLY_QUALITY_ANCHOR_REL_PATH,
   ])
+  for (const file of knowledgeMarkdownFiles) knownExact.add(file.path)
+  for (const file of userIdentityFiles) knownExact.add(file.path)
+  for (const scene of sceneEditorEntries) {
+    knownExact.add(`scenes/${scene.sceneId}/scene.json`)
+    knownExact.add(`scenes/${scene.sceneId}/description.txt`)
+  }
+  const referencedPaths = new Set(blueprintReferencedFilePaths(bp))
   const preservedFiles: RolePackBinaryFile[] = []
   for (const n of names) {
     const path = normalizeZipPath(n)
     if (!isSafePathUnderRole(path, roleId)) continue
     const rel = path.slice(`${roleId}/`.length)
+    if (knownExact.has(rel)) {
+      continue
+    }
     if (
-      knownExact.has(rel) ||
-      rel.startsWith('knowledge/') ||
-      rel.startsWith('assets/images/') ||
-      rel.startsWith('scenes/') ||
-      rel.startsWith('user_identities/')
+      !referencedPaths.has(rel)
+      && (
+        rel.startsWith('knowledge/')
+        || rel.startsWith('assets/images/')
+        || rel.startsWith('scenes/')
+        || rel.startsWith('user_identities/')
+      )
     ) {
       continue
     }
@@ -281,10 +315,15 @@ export async function importRolePackFromZip(file: File): Promise<ImportedRolePac
     emotionImageFiles,
     portraitCatalogJson,
     configJson,
+    adultExtensionJson,
     creatorMessage,
     uiJson,
     authorJson,
     memorySeedJson,
+    voiceProfileJson,
+    deepCapsuleText,
+    systemPromptMarkdown,
+    polishPromptMarkdown,
     userIdentityFiles,
     userIdentitiesIndexJson,
     preservedFiles,
@@ -293,15 +332,15 @@ export async function importRolePackFromZip(file: File): Promise<ImportedRolePac
   }
 }
 
-/** 导入成功后附在状态栏的短提示（与 oclive-launcher / 简单创作「对话推理」一致）。 */
+/** 导入成功后附在状态栏的短提示（实际推理选择归 Chat Pro 设置页）。 */
 export function importedPackBrainHint(settingsJson: string): string {
   try {
     const s = JSON.parse(settingsJson) as { plugin_backends?: { llm?: string } }
     if (s.plugin_backends?.llm === 'remote') {
-      return '（云端 LLM：运行 oclive 时请在 oclive-launcher 填写 Remote LLM URL。）'
+      return '（此包原先建议云端 LLM；实际后端与连接地址请在 Chat Pro 设置页确认。）'
     }
   } catch {
     /* ignore */
   }
-  return '（推理方式可在简单创作「对话推理」或 oclive-launcher 中调整。）'
+  return '（角色包不固化本机模型；实际后端、基础模型与 GGUF 请在 Chat Pro 设置页调整。）'
 }

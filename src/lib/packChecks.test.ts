@@ -60,7 +60,66 @@ describe('runAllPackChecks', () => {
       memory_config: { topic_weights: { s1: { a: 1 } } },
     })
     const r = await runAllPackChecks(manifest, settings)
-    expect(r.ok).toBe(true)
+    expect(r.ok, JSON.stringify(r.errors)).toBe(true)
     expect(r.errors).toEqual([])
+  })
+
+  it('accepts the Stable v4 inference profile in the full editor check chain', async () => {
+    const manifest = JSON.stringify({
+      id: 'r1',
+      name: 'Role',
+      version: '1',
+      author: 't',
+      description: 'd',
+      scenes: ['s1'],
+      user_relations: { u: {} },
+      memory_config: { topic_weights: { s1: { a: 1 } } },
+    })
+    const settings = JSON.stringify({
+      memory_config: { topic_weights: { s1: { a: 1 } } },
+      plugin_backends: { llm: 'ollama' },
+      inference_profile: {
+        generation: {
+          temperature: 0.8,
+          top_p: 0.9,
+          preferred_output_tokens: 1024,
+          maximum_output_tokens: 2048,
+        },
+        context: { minimum_tokens: 8192, preferred_tokens: 16384 },
+        reasoning: { mode: 'adaptive', effort: 0.6 },
+        performance_intent: {
+          priority: 'balanced',
+          prefer_prefix_cache: true,
+          allow_context_reduction: true,
+        },
+      },
+    })
+
+    const r = await runAllPackChecks(manifest, settings)
+    expect(r.ok, JSON.stringify(r.errors)).toBe(true)
+    expect(r.errors).toEqual([])
+  })
+
+  it('rejects invalid Stable v4 inference values in the full editor check chain', async () => {
+    const manifest = JSON.stringify({
+      id: 'r1',
+      name: 'Role',
+      version: '1',
+      author: 't',
+      description: 'd',
+      scenes: ['s1'],
+      user_relations: { u: {} },
+      memory_config: { topic_weights: { s1: { a: 1 } } },
+    })
+    const settings = JSON.stringify({
+      memory_config: { topic_weights: { s1: { a: 1 } } },
+      inference_profile: {
+        generation: { temperature: 2.5 },
+      },
+    })
+
+    const r = await runAllPackChecks(manifest, settings)
+    expect(r.ok).toBe(false)
+    expect(r.errors.some((error) => error.includes('temperature'))).toBe(true)
   })
 })

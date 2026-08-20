@@ -1,6 +1,6 @@
 import { ref, watch } from 'vue'
 
-export type EditorViewId = 'start' | 'simple' | 'advanced'
+export type EditorViewId = 'start' | 'simple' | 'advanced' | 'adult'
 
 export function useEditorViewState(onBeforeSwitch?: (id: EditorViewId) => void) {
   const editorView = ref<EditorViewId>('start')

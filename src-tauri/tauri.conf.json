@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "oclive-pack-editor",
+  "productName": "A.I.Live 角色包编写器",
   "version": "0.5.0",
   "identifier": "com.oclive.packeditor",
   "build": {
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "oclive 角色包编写器",
+        "title": "A.I.Live 角色包编写器",
         "width": 920,
         "height": 720,
         "resizable": true

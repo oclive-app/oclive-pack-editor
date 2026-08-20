@@ -1,6 +1,6 @@
-# oclive-pack-editor
+# A.I.Live 角色包编写器
 
-独立 **角色包编写器**（Vite + Vue 3 + TypeScript + **Tauri 2** 桌面壳）：面向创作者的 **简单创作** 流程（人设、立绘、世界观 → 导出 `.ocpak` / 写入 `roles/`），并提供按真实角色包文件组织的 **高级创作**。产物与 **oclivenewnew** 运行时兼容；**不包含**对话引擎源码。
+独立 **A.I.Live 角色包编写器**（仓库名：`oclive-pack-editor`，Vite + Vue 3 + TypeScript + **Tauri 2** 桌面壳）：面向创作者的 **简单创作** 流程（人设、立绘、世界观 → 导出 `.ocpak` / 写入 `roles/`），并提供按真实角色包文件组织的 **高级创作**。产物与 **oclivenewnew** 运行时兼容；**不包含**对话引擎源码。
 
 [![CI](https://github.com/linkaiheng2233-cyber/oclive-pack-editor/actions/workflows/ci.yml/badge.svg)](https://github.com/linkaiheng2233-cyber/oclive-pack-editor/actions/workflows/ci.yml)
 
@@ -75,7 +75,7 @@
 ## 创作模式
 
 - **简单创作**
-  - **基础**：**核心性格档案**长文（写入 `core_personality.txt`）与 **情绪图片**（导出至 `assets/images/`，文件名需与 oclive 情绪资源命名一致）。
+  - **基础**：**核心性格档案**长文（写入 `core_personality.txt`）、默认启用的通用 **回复表现优化**（可打开开关整段自定义）与 **情绪图片**（导出至 `assets/images/`，文件名需与 oclive 情绪资源命名一致）。回复优化写入 Stable v4 `runtime_config.reply_quality_anchor`（v2 为兼容字段），作为独立区块紧邻不可覆盖的内核硬约束；物理顺序服从运行时前缀缓存布局，不与核心人设混写。
   - **进阶**（可折叠）：场景、用户身份、**世界观**（`knowledge/world.md`）、**事件影响系数**、**人格来源**（`evolution.personality_source`）、**单轮可变档案步长**（`max_change_per_event`）等，对应 blueprint **meta** 与运行时视图字段。
   - **推理归属**：简单包只保留 **Ollama 兜底**，不写入当前电脑的模型名、GGUF 或运行参数；实际后端和基础模型统一在 **Chat Pro 设置页**选择。
 - **高级创作**：按实际文件导航编辑 **`pipeline.ocblueprint`**、`core_personality.txt` / `creator_message.txt`、`config.json`、`memory_seed.json`、`user_identities/`、`knowledge/`、`scenes/`、`prompts/`、`voice_profile.json`、`ui.json`、`author.json` 与情绪资源。Stable v4 的 **理想推理配置**只表达可移植采样、预算、推理强度和性能意图；不重复 Chat Pro 的模型/GGUF 设置。
@@ -85,6 +85,9 @@
   - **运行全部检查** 会附带知识级校验（例如路径、`id` 重复等），与 manifest/settings 结果合并展示。
   - **知识强调预览 / 调参助手**（仅编辑器内近似）：输入关键词可预览命中与原因、正文片段；可选「预览条件：场景」与严格场景开关；**临时权重滑杆**只影响预览排序，满意后再写入真实 `weight`。运行时召回以 oclivenewnew 为准，预览用于创作调参。
 - **导入角色包**：支持 **`.zip` / `.ocpak`**，解析后回填上述内容，便于在已有包上修改或另存为新包。导入后会保留编写器不直接编辑的安全文件与蓝图扩展字段，避免再次导出时静默丢失。导入时会校验 zip 内路径：拒绝含 `..` / `.` 段的非法路径（防 zip-slip）；情绪图仅接受 `{roleId}/assets/images/` 下**单层**文件名（不接受子目录）。
+- **转换外部角色卡**：开始页可选择 Character Card / Tavern **V1、V2、V3 `.json`**，带分字段旧式 V1 或 `chara` / `ccv3` 元数据的 **`.png` / `.apng`**，以及 V3 **`.charx`**。编写器提取名称、昵称、作者、人设、场景、`first_mes`、`alternate_greetings`、`mes_example`、`character_book`，并把本地可解析的 V3 主图和情绪图映射到 OCLive 立绘目录；CHARX 中实际图片格式与声明扩展名不一致时以安全魔数识别为准，`x-risu-asset` 静态图片作为需复核的额外立绘保留。转换完成后可直接选择进入**简单创造**或**高级创作**，两者编辑同一份草稿。转换报告显示在简单创造顶部，规范 JSON 保存在 `imports/original_character_card.json`，V3 PNG/APNG/CHARX 原文件也会保存在 `imports/`。外部 `system_prompt` / `post_history_instructions` 只保存为 `prompts/system.md` 参考，不会直接接管运行时；`group_only_greetings` 与无直接等价行为的高级知识规则只保留供复核。转换器不联网抓取远程资源，不执行代码或模型资产，不翻译文本、不生成 R18 扩展，也不启用平台私有 `extensions`。CHARX 会拒绝不安全路径、过多条目和超出限制的解压内容。
+
+**首发与内测边界**：基础角色包编辑、Character Card 转换和 `.ocpak` 导出属于首发范围；成人扩展与 `voice_profile.json` 的编辑入口已经存在，但真实内容效果、撤销/错误隔离、语音设备与长时间播报体验继续在内测推进，不阻塞基础版本发布。
 
 **简单创作已覆盖（表单 → JSON）**：角色 `id` / `name` / `version` / `author` / `description` / `min_runtime_version`（可选）/ `scenes` / `default_personality` / 单槽 `user_relations` + `default_relation` / **`knowledge.enabled` 与 `knowledge.glob`**；运行部分覆盖 `schema_version` / `evolution.event_impact_factor` / **`evolution.personality_source`** / **`evolution.max_change_per_event`** / `identity_binding` / `interaction_mode` / `memory_config.scene_weight_multiplier` / `remote_presence.default_enabled` 以及非 LLM 插件后端。简单模式会删除旧的 `model` / `ollama_model` 并固定 `plugin_backends.llm = ollama` 作为兜底，避免复制 Chat Pro 设置。**仍须高级创作的典型项**：理想推理配置、多身份并存、`life_trajectory` / `life_schedule`、`dev_only`、`autonomous_scene`、逐场景 `topic_weights` 精调等。
 
@@ -135,6 +138,8 @@ npm run tauri:build  # 生产安装包 / 可执行文件（需完整 Rust + 平�
 | `npm run dev:browser` | 浏览器开发 + 自动打开 `localhost:5173` |
 | `npm run build` | 生产构建（`dist/`，供 Tauri `distDir` 使用） |
 | `npm test` | Vitest（导入/导出 roundtrip、记忆与身份模板、路径安全、Stable v4 / v2 兼容校验与包检查） |
+| `npm run test:character-cards` | 运行不含第三方正文的 Character Card 自动化矩阵：规范容器、字段映射、已观察平台方言及恶意/损坏输入；生成式中性夹具进入普通本地测试 |
+| `npm run audit:character-cards` | 对 `OCLIVE_CHARACTER_CARD_CORPUS` 指定的本机样本目录执行离线转换巡检；可用 `OCLIVE_CHARACTER_CARD_AUDIT_REPORT` 输出不含角色正文的 JSON 结构报告。第三方样本不进入仓库或普通 CI |
 | `npm run test:e2e` | Playwright 冒烟（需先 `npm run build`；首次可执行 `npm run test:e2e:install` 安装浏览器） |
 | `npm run tauri:dev` | Tauri 开发窗口 |
 | `npm run tauri:build` | Tauri 打包（安装包 / 可执行文件） |

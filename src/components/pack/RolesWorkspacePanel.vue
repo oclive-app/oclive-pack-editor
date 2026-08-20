@@ -28,6 +28,7 @@ const emit = defineEmits<{
   continueDraft: []
   discardDraft: []
   importPack: [e: Event]
+  importCharacterCard: [e: Event]
   applyMarketCompose: []
 }>()
 
@@ -119,6 +120,23 @@ function openRole(roleId: string): void {
         </button>
       </div>
       <p class="rw-hint rw-entry-note">{{ t('packEditor.draft.afterPick') }}</p>
+
+      <div class="rw-character-card-import">
+        <div>
+          <h3>{{ t('packEditor.characterCardImport.title') }}</h3>
+          <p>{{ t('packEditor.characterCardImport.desc') }}</p>
+        </div>
+        <label class="rw-btn rw-btn--file rw-btn--primary">
+          <input
+            type="file"
+            accept=".json,.png,.apng,.charx,application/json,image/png,image/apng"
+            class="rw-file-input"
+            @change="emit('importCharacterCard', $event)"
+          />
+          {{ t('packEditor.characterCardImport.button') }}
+        </label>
+      </div>
+      <p class="rw-hint rw-character-card-note">{{ t('packEditor.characterCardImport.note') }}</p>
     </section>
 
     <section class="rw-card" :aria-label="String(t('packEditor.rolesWorkspace.aria'))">
@@ -281,6 +299,34 @@ function openRole(roleId: string): void {
   font-size: 0.85rem;
   color: var(--fluent-text-secondary);
   line-height: 1.55;
+}
+.rw-character-card-import {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--fluent-border-stroke);
+}
+.rw-character-card-import h3 {
+  margin: 0;
+  font-size: 0.9rem;
+}
+.rw-character-card-import p {
+  margin: 0.3rem 0 0;
+  color: var(--fluent-text-secondary);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+.rw-character-card-note {
+  margin-top: 0.45rem !important;
+}
+@media (max-width: 640px) {
+  .rw-character-card-import {
+    align-items: stretch;
+    flex-direction: column;
+  }
 }
 
 .rw-card-heading {

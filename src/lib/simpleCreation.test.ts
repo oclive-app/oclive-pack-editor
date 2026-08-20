@@ -10,6 +10,7 @@ import {
   normalizeKnowledgeGlob,
   settingsRecordToSimpleForm,
 } from './simpleCreation'
+import { EDITOR_PACK_REPLY_QUALITY_ANCHOR } from './replyQualityAnchorPreset'
 
 describe('simpleCreation', () => {
   it('merges manifest and preserves extra keys', () => {
@@ -136,5 +137,47 @@ describe('simpleCreation', () => {
     expect(o.evolution.max_change_per_event).toBe(0.12)
     expect(o.evolution.ai_analysis_interval).toBe(20)
     expect(o.evolution.max_total_change).toBe(0.4)
+  })
+
+  it('simple mode writes the recommended reply optimization by default', () => {
+    const form = defaultSimpleSettingsForm()
+    expect(form.customReplyQualityEnabled).toBe(false)
+
+    const out = JSON.parse(
+      applySimpleSettingsToJson('{}', form, {
+        enabled: true,
+        glob: 'knowledge/**/*.md',
+      }),
+    ) as Record<string, unknown>
+
+    expect(out.reply_quality_anchor).toBe(EDITOR_PACK_REPLY_QUALITY_ANCHOR)
+  })
+
+  it('simple mode roundtrips a custom reply optimization', () => {
+    const form = settingsRecordToSimpleForm({ reply_quality_anchor: '角色每轮先行动。' })
+    expect(form.customReplyQualityEnabled).toBe(true)
+    expect(form.replyQualityAnchor).toBe('角色每轮先行动。')
+
+    const out = JSON.parse(
+      applySimpleSettingsToJson('{}', form, {
+        enabled: true,
+        glob: 'knowledge/**/*.md',
+      }),
+    ) as Record<string, unknown>
+    expect(out.reply_quality_anchor).toBe('角色每轮先行动。')
+  })
+
+  it('blank custom reply optimization falls back to the recommended text', () => {
+    const form = defaultSimpleSettingsForm()
+    form.customReplyQualityEnabled = true
+    form.replyQualityAnchor = '  '
+
+    const out = JSON.parse(
+      applySimpleSettingsToJson('{}', form, {
+        enabled: true,
+        glob: 'knowledge/**/*.md',
+      }),
+    ) as Record<string, unknown>
+    expect(out.reply_quality_anchor).toBe(EDITOR_PACK_REPLY_QUALITY_ANCHOR)
   })
 })

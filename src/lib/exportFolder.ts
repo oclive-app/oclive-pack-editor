@@ -37,7 +37,7 @@ export async function confirmOverwriteExistingRoleDir(
   return window.confirm(message)
 }
 
-function arrayBufferToBase64(buffer: ArrayBuffer): string {
+export function arrayBufferToBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer)
   const chunk = 0x8000
   let binary = ''

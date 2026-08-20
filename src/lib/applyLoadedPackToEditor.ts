@@ -14,6 +14,7 @@ import {
 import { parseUiConfigJson } from './uiConfig'
 import type { UiConfig } from '../types/uiConfig'
 import type { SceneEditorEntry } from '../lib/scenePackUser'
+import type { CharacterCardConversionReport } from './characterCardImport'
 
 export type ApplyLoadedPackInput = {
   roleId: string
@@ -74,6 +75,7 @@ export type ApplyLoadedPackTargets = {
   userIdentitiesIndexJson?: { value: string }
   preservedFiles?: { value: RolePackBinaryFile[] }
   preservedBlueprintFields?: { value: Record<string, unknown> }
+  characterCardImportReport?: { value: CharacterCardConversionReport | null }
   applyKnowledgeBundle?: (files: KnowledgeMarkdownFile[], legacyWorldBody?: string) => void
   applySceneEditorEntries?: (entries: SceneEditorEntry[]) => void
   syncFormsFromJson: () => void
@@ -109,6 +111,7 @@ export function importedPackToApplyInput(imp: ImportedRolePack): ApplyLoadedPack
 
 /** 将 zip 导入或磁盘加载结果写入编写器状态（与 usePackEditor.onImportPack 共用）。 */
 export function applyLoadedPackToEditor(input: ApplyLoadedPackInput, targets: ApplyLoadedPackTargets): void {
+  if (targets.characterCardImportReport) targets.characterCardImportReport.value = null
   targets.manifestText.value = input.manifestJson
   targets.settingsText.value = input.settingsJson
   targets.corePersonalityText.value =

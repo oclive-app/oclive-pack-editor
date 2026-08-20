@@ -1,4 +1,6 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch, type Ref } from 'vue'
+import { invoke } from '@tauri-apps/api/core'
+import { save } from '@tauri-apps/plugin-dialog'
 import { i18n } from '../i18n'
 import {
   DEFAULT_CORE_PERSONALITY_TEXT,
@@ -11,8 +13,20 @@ import {
   triggerDownload,
   type PackExtraFiles,
 } from '../lib/exportPack'
-import { pickRolesRootAndWritePack, isFolderExportSupported, writePackToRolesRootPath, confirmOverwriteExistingRoleDir } from '../lib/exportFolder'
+import {
+  arrayBufferToBase64,
+  confirmOverwriteExistingRoleDir,
+  isFolderExportSupported,
+  isTauriRuntime,
+  pickRolesRootAndWritePack,
+  writePackToRolesRootPath,
+} from '../lib/exportFolder'
+import { readLastOcpakPath, rememberOcpakPath } from '../lib/ocpakSaveTarget'
 import { importRolePackFromZip, importedPackBrainHint } from '../lib/importPack'
+import {
+  importCharacterCard,
+  type CharacterCardConversionReport,
+} from '../lib/characterCardImport'
 import {
   applyLoadedPackToEditor,
   importedPackToApplyInput,
@@ -203,6 +217,7 @@ export function usePackEditor() {
   const lastMessage = ref('')
   /** 与 lastMessage 配套：错误类文案为 true，成功提示为 false */
   const lastMessageIsError = ref(false)
+  const characterCardImportReport = ref<CharacterCardConversionReport | null>(null)
   const requireChecksBeforeExport = ref(false)
   /** 简单模式表单与 JSON 不一致时（JSON 无法解析）提示 */
   const syncFormWarning = ref('')
@@ -732,6 +747,41 @@ export function usePackEditor() {
     inp.value = ''
   }
 
+  async function onImportCharacterCard(e: Event): Promise<void> {
+    const inp = e.target as HTMLInputElement
+    const file = inp.files?.[0]
+    setFeedback('', false)
+    if (!file) return
+    try {
+      const converted = await importCharacterCard(file)
+      applyLoadedPackToEditor(converted.input, applyLoadedPackTargets)
+      characterCardImportReport.value = converted.report
+      applyPortraitSlotsFromImport(
+        converted.input.portraitCatalogJson ?? '',
+        converted.input.emotionImageFiles ?? [],
+        converted.input.configJson ?? '',
+      )
+      creationMode.value = 'simple'
+      flushSimpleToJson()
+      setFeedback(
+        pe('packEditor.feedback.characterCardImportSuccess', {
+          roleId: converted.report.roleId,
+          format: converted.report.sourceFormat.toUpperCase(),
+        }),
+        false,
+      )
+    } catch (err) {
+      characterCardImportReport.value = null
+      setFeedback(
+        pe('packEditor.feedback.characterCardImportFail', {
+          err: err instanceof Error ? err.message : String(err),
+        }),
+        true,
+      )
+    }
+    inp.value = ''
+  }
+
   function onPortraitSlotPick(id: string, e: Event): void {
     if (!(SIMPLE_PORTRAIT_SLOT_IDS as readonly string[]).includes(id))
       return
@@ -920,7 +970,7 @@ export function usePackEditor() {
     return { ok: true, message: pe('packEditor.feedback.marketComposeOk') }
   }
 
-  async function exportZip(ocpak: boolean): Promise<void> {
+  async function exportZip(ocpak: boolean, saveAs = false): Promise<void> {
     setFeedback('', false)
     const built = await tryBuildExportPayload()
     if (!built.ok) {
@@ -932,8 +982,43 @@ export function usePackEditor() {
     try {
       const blob = await buildRolePackZipBlob(roleId, manifest, settings, packExtra())
       const name = suggestedZipName(roleId, ocpak)
-      triggerDownload(blob, name)
-      setFeedback(pe('packEditor.feedback.exportZipSuccess', { name, roleId }), false)
+
+      if (!isTauriRuntime()) {
+        triggerDownload(blob, name)
+        setFeedback(pe('packEditor.feedback.exportZipSuccess', { name, roleId }), false)
+        return
+      }
+
+      const saveOptions = {
+        defaultPath: readLastOcpakPath() ?? name,
+        filters: [{ name: 'OCLive Role Pack', extensions: ['ocpak'] }],
+      }
+      let target = saveAs ? null : readLastOcpakPath()
+      let usedDialog = false
+      if (!target) {
+        const picked = await save(saveOptions)
+        if (picked === null) return
+        target = picked
+        usedDialog = true
+      }
+
+      const writeTo = async (path: string): Promise<void> => {
+        const base64 = arrayBufferToBase64(await blob.arrayBuffer())
+        await invoke('write_export_zip_file', { path, base64 })
+      }
+
+      try {
+        await writeTo(target)
+      } catch (error) {
+        if (usedDialog) throw error
+        const picked = await save(saveOptions)
+        if (picked === null) return
+        target = picked
+        await writeTo(target)
+      }
+
+      rememberOcpakPath(target)
+      setFeedback(pe('packEditor.feedback.exportZipSaved', { name, roleId, path: target }), false)
     } catch (e) {
       setFeedback(
         pe('packEditor.feedback.exportZipFail', {
@@ -959,6 +1044,7 @@ export function usePackEditor() {
     userIdentitiesIndexJson,
     preservedFiles,
     preservedBlueprintFields,
+    characterCardImportReport,
     worldviewMarkdown,
     knowledgeMarkdownFiles,
     emotionImageFiles,
@@ -1123,6 +1209,7 @@ export function usePackEditor() {
   }
 
   function restoreDraftSnapshot(snapshot: PackDraftSnapshot): void {
+    characterCardImportReport.value = null
     cancelDebouncedSimpleToJson()
     manifestText.value = snapshot.manifestText
     settingsText.value = snapshot.settingsText
@@ -1246,6 +1333,7 @@ export function usePackEditor() {
     lastExportedRolesRoot,
     lastMessage,
     lastMessageIsError,
+    characterCardImportReport,
     requireChecksBeforeExport,
     syncFormWarning,
     creationMode,
@@ -1262,6 +1350,7 @@ export function usePackEditor() {
     runValidate,
     canEnterAdultEditor,
     onImportPack,
+    onImportCharacterCard,
     onPortraitSlotPick,
     onPortraitSlotClear,
     clearPortraitSlots,

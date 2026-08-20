@@ -155,6 +155,9 @@ export function useRolesWorkspace(applyTargets: ApplyLoadedPackTargets) {
   }
 
   function resetToNewPack(presetId: NewPackPresetId = 'blank'): void {
+    if (applyTargets.characterCardImportReport) {
+      applyTargets.characterCardImportReport.value = null
+    }
     const preset = buildNewPackPreset(presetId)
     applyTargets.manifestText.value = preset.manifestText
     applyTargets.settingsText.value = preset.settingsText

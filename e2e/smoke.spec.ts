@@ -36,6 +36,90 @@ test.describe('oclive-pack-editor smoke', () => {
     await expect(page.locator('label.rw-label').filter({ hasText: /Roles directory|Roles 目录/i })).toHaveCount(0)
   })
 
+  test('V2 JSON 角色卡转换为可编辑的简单创作草稿', async ({ page }) => {
+    const pageErrors = collectPageFailures(page)
+    await page.goto('/')
+    const card = {
+      spec: 'chara_card_v2',
+      spec_version: '2.0',
+      data: {
+        name: 'E2E Alice',
+        description: '{{char}} is a traveler.',
+        personality: 'Curious and calm.',
+        scenario: '{{char}} meets {{user}} at a station.',
+        first_mes: 'Hello, {{user}}.',
+        mes_example: '',
+        alternate_greetings: [],
+        creator_notes: '',
+        system_prompt: '',
+        post_history_instructions: '',
+        tags: [],
+        creator: '',
+        character_version: '1.0.0',
+        extensions: {},
+      },
+    }
+    await page.locator('input[accept*="application/json"]').setInputFiles({
+      name: 'alice.json',
+      mimeType: 'application/json',
+      buffer: Buffer.from(JSON.stringify(card)),
+    })
+
+    await expect(page.getByRole('dialog', { name: /选择从哪里继续创作|Choose where to continue/i })).toBeVisible()
+    await page.getByRole('button', { name: /进入简单创造|Open Simple creation/i }).click()
+    await expect(page.getByText(/角色卡转换报告|Character Card conversion report/i)).toBeVisible()
+    await expect(page.locator('#core-ta')).toHaveValue(/E2E Alice is a traveler\./)
+    await expect(page.getByText(/无需修改即可生效|active by default/i)).toBeVisible()
+    await page.locator('.reply-quality-switch input').check()
+    const promptArea = page.locator('#reply-quality-ta')
+    const promptLayout = await promptArea.evaluate((element) => {
+      const textarea = element as HTMLTextAreaElement
+      const parent = textarea.parentElement!
+      const parentStyle = getComputedStyle(parent)
+      const availableWidth =
+        parent.clientWidth -
+        Number.parseFloat(parentStyle.paddingLeft) -
+        Number.parseFloat(parentStyle.paddingRight)
+      return {
+        resize: getComputedStyle(textarea).resize,
+        width: textarea.getBoundingClientRect().width,
+        availableWidth,
+      }
+    })
+    expect(promptLayout.resize).toBe('both')
+    expect(Math.abs(promptLayout.width - promptLayout.availableWidth)).toBeLessThanOrEqual(2)
+    await expect.poll(() => pageErrors, { timeout: 2000 }).toEqual([])
+  })
+
+  test('角色卡转换后可直接进入高级创作检查文件', async ({ page }) => {
+    const pageErrors = collectPageFailures(page)
+    await page.goto('/')
+    const card = {
+      spec: 'chara_card_v3',
+      spec_version: '3.0',
+      data: {
+        name: 'Advanced Alice',
+        description: 'A careful V3 tester.',
+        personality: 'Observant.',
+        scenario: 'A quiet lab.',
+        first_mes: 'Ready.',
+        mes_example: '',
+        group_only_greetings: [],
+        assets: [],
+      },
+    }
+    await page.locator('input[accept*="application/json"]').setInputFiles({
+      name: 'advanced-alice.json',
+      mimeType: 'application/json',
+      buffer: Buffer.from(JSON.stringify(card)),
+    })
+
+    await page.getByRole('button', { name: /进入高级创作|Open Advanced creation/i }).click()
+    await expect(page.locator('.rail-btn.active')).toContainText(/高级|Advanced/i)
+    await expect(page.getByRole('tab', { name: /核心档案与寄语|Core profile & message/i })).toBeVisible()
+    await expect.poll(() => pageErrors, { timeout: 2000 }).toEqual([])
+  })
+
   test('高级页可编辑 memory_seed 与知识库', async ({ page }) => {
     const pageErrors = collectPageFailures(page)
     await page.goto('/')

@@ -60,4 +60,14 @@ describe('RolesWorkspacePanel', () => {
     expect(wrapper.emitted('loadSelectedRole')).toHaveLength(1)
     expect(wrapper.findAll('.rw-role-card')[1]!.find('button').attributes('disabled')).toBeDefined()
   })
+
+  it('offers a separate Character Card conversion input', async () => {
+    const wrapper = mountPanel()
+    const input = wrapper.find('input[accept*="application/json"]')
+    expect(input.exists()).toBe(true)
+    expect(input.attributes('accept')).toContain('.charx')
+    expect(input.attributes('accept')).toContain('.apng')
+    await input.trigger('change')
+    expect(wrapper.emitted('importCharacterCard')).toHaveLength(1)
+  })
 })

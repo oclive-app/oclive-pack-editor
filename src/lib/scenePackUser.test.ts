@@ -39,11 +39,15 @@ describe('scenePackUser', () => {
       displayName: '学校',
       activitySetting: '08:00-16:00 上课',
       scenePrompt: '',
+      welcomeMessage: '早上好。',
+      monologues: ['今天也要加油。', '先坐下来吧。'],
     })
     const entry = parseSceneFromDisk('school', json, '在此场景语气更正式。\n')
     expect(entry.displayName).toBe('学校')
     expect(entry.activitySetting).toContain('08:00')
     expect(entry.scenePrompt).toBe('在此场景语气更正式。')
+    expect(entry.welcomeMessage).toBe('早上好。')
+    expect(entry.monologues).toEqual(['今天也要加油。', '先坐下来吧。'])
   })
 
   it('builds description from scene prompt only', () => {

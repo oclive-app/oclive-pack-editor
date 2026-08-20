@@ -3,6 +3,8 @@
  * 未知字段在合并时保留；简单模式仅维护「一个用户身份」槽（多身份请用高级创作）。
  */
 
+import { EDITOR_PACK_REPLY_QUALITY_ANCHOR } from './replyQualityAnchorPreset'
+
 export const PERSONALITY_KEYS = [
   'stubbornness',
   'clinginess',
@@ -78,6 +80,9 @@ export type SimpleSettingsForm = {
   directoryPluginEmotion: string
   directoryPluginEvent: string
   directoryPluginPrompt: string
+  /** false：使用编写器推荐优化；true：以 replyQualityAnchor 整段替换推荐优化。 */
+  customReplyQualityEnabled: boolean
+  replyQualityAnchor: string
 }
 
 const DEFAULT_PERSONALITY = [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5]
@@ -151,6 +156,8 @@ export function defaultSimpleSettingsForm(): SimpleSettingsForm {
     directoryPluginEmotion: '',
     directoryPluginEvent: '',
     directoryPluginPrompt: '',
+    customReplyQualityEnabled: false,
+    replyQualityAnchor: EDITOR_PACK_REPLY_QUALITY_ANCHOR,
   }
 }
 
@@ -229,6 +236,10 @@ export function settingsRecordToSimpleForm(s: Record<string, unknown>): SimpleSe
   const swm = Number(mem.scene_weight_multiplier)
   const psRaw = String(evo.personality_source ?? '').toLowerCase()
   const personalitySource: PersonalitySourceOpt = psRaw === 'profile' ? 'profile' : 'vector'
+  const replyQualityAnchor =
+    typeof s.reply_quality_anchor === 'string' && s.reply_quality_anchor.trim()
+      ? s.reply_quality_anchor.trim()
+      : EDITOR_PACK_REPLY_QUALITY_ANCHOR
 
   return {
     schemaVersion: Number.isFinite(s.schema_version as number) ? Number(s.schema_version) : 1,
@@ -247,6 +258,9 @@ export function settingsRecordToSimpleForm(s: Record<string, unknown>): SimpleSe
     directoryPluginEmotion: String(dp.emotion ?? '').trim(),
     directoryPluginEvent: String(dp.event ?? '').trim(),
     directoryPluginPrompt: String(dp.prompt ?? '').trim(),
+    customReplyQualityEnabled:
+      replyQualityAnchor !== EDITOR_PACK_REPLY_QUALITY_ANCHOR.trim(),
+    replyQualityAnchor,
   }
 }
 
@@ -383,6 +397,9 @@ export function applySimpleSettingsToJson(
     pb.directory_plugins = dir
   }
   base.plugin_backends = pb
+  base.reply_quality_anchor = form.customReplyQualityEnabled
+    ? form.replyQualityAnchor.trim() || EDITOR_PACK_REPLY_QUALITY_ANCHOR
+    : EDITOR_PACK_REPLY_QUALITY_ANCHOR
 
   base.knowledge = {
     enabled: knowledge.enabled,

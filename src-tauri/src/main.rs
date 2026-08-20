@@ -89,6 +89,25 @@ fn write_role_pack_binaries(roles_root: String, files: Vec<BinaryFileEntry>) -> 
     Ok(())
 }
 
+/// 直接把导出 zip 写到用户通过「另存为」选择的绝对路径。
+#[tauri::command]
+fn write_export_zip_file(path: String, base64: String) -> Result<(), String> {
+    use base64::Engine;
+    use std::fs;
+
+    let target = std::path::Path::new(path.trim());
+    if target.as_os_str().is_empty() {
+        return Err("导出路径不能为空".to_string());
+    }
+    if let Some(parent) = target.parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(base64.trim())
+        .map_err(|e| format!("base64 解码失败：{}", e))?;
+    fs::write(target, bytes).map_err(|e| e.to_string())
+}
+
 const REPLY_QUALITY_ANCHOR_REL: &str = "prompts/reply_quality_anchor.md";
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -842,6 +861,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             write_role_pack_files,
             write_role_pack_binaries,
+            write_export_zip_file,
             find_roles_root_for_editor,
             list_role_packs_under_roles_root,
             guess_default_roles_root,
@@ -883,6 +903,24 @@ mod role_pack_command_tests {
             .any(|e| e.role_id == "demo" && !e.needs_migration));
         assert!(list.iter().any(|e| e.role_id == "old" && e.needs_migration));
         let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn write_export_zip_file_roundtrip() {
+        use super::write_export_zip_file;
+        use base64::Engine;
+        use std::fs;
+
+        let path =
+            std::env::temp_dir().join(format!("oclive-pe-export-{}.ocpak", std::process::id()));
+        let bytes = b"PK\x03\x04 mock oclive pack".to_vec();
+        write_export_zip_file(
+            path.to_string_lossy().to_string(),
+            base64::engine::general_purpose::STANDARD.encode(&bytes),
+        )
+        .unwrap();
+        assert_eq!(fs::read(&path).unwrap(), bytes);
+        let _ = fs::remove_file(&path);
     }
 
     #[test]

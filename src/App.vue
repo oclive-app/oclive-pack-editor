@@ -9,6 +9,7 @@ import { setAppLocale, getLocalePreference, type AppLocale } from './i18n'
 import PackHeaderActions from './components/pack/PackHeaderActions.vue'
 import PackShellMenu from './components/pack/PackShellMenu.vue'
 import PackConfirmDialog from './components/pack/PackConfirmDialog.vue'
+import CharacterCardModeDialog from './components/pack/CharacterCardModeDialog.vue'
 import PackExportCreatorMessageDialog, {
   type ExportCreatorMessageKind,
 } from './components/pack/PackExportCreatorMessageDialog.vue'
@@ -45,6 +46,7 @@ const {
   validationErrors,
   lastMessage,
   lastMessageIsError,
+  characterCardImportReport,
   requireChecksBeforeExport,
   syncFormWarning,
   creationMode,
@@ -69,6 +71,7 @@ const {
   runValidate,
   canEnterAdultEditor,
   onImportPack,
+  onImportCharacterCard,
   onPortraitSlotPick,
   onPortraitSlotClear,
   clearPortraitSlots,
@@ -132,18 +135,22 @@ const uiLocale = ref<AppLocale>(getLocalePreference())
 const writebackOpen = ref(false)
 let writebackResolve: ((v: 'overwrite' | 'saveAsNew' | 'cancel') => void) | null = null
 
+const characterCardModeOpen = ref(false)
 const exportCreatorOpen = ref(false)
 const pendingExportKind = ref<ExportCreatorMessageKind | null>(null)
+const pendingExportSaveAs = ref(false)
 
-function beginExport(kind: ExportCreatorMessageKind): void {
+function beginExport(kind: ExportCreatorMessageKind, saveAs = false): void {
   flushSimpleToJson()
   pendingExportKind.value = kind
+  pendingExportSaveAs.value = saveAs
   exportCreatorOpen.value = true
 }
 
 function onExportCreatorCancel(): void {
   exportCreatorOpen.value = false
   pendingExportKind.value = null
+  pendingExportSaveAs.value = false
 }
 
 async function onExportCreatorConfirm(payload: { enabled: boolean; message: string }): Promise<void> {
@@ -151,9 +158,11 @@ async function onExportCreatorConfirm(payload: { enabled: boolean; message: stri
   creatorMessageToOthers.value = payload.enabled ? payload.message.trim() : ''
   creatorMessageMode.value = 'per_module'
   const kind = pendingExportKind.value
+  const saveAs = pendingExportSaveAs.value
   pendingExportKind.value = null
+  pendingExportSaveAs.value = false
   if (!kind) return
-  if (kind === 'ocpak') await exportZip(true)
+  if (kind === 'ocpak') await exportZip(true, saveAs)
   else await executeExportFolder()
 }
 
@@ -276,6 +285,10 @@ async function onExportOcpak(): Promise<void> {
   beginExport('ocpak')
 }
 
+function onExportOcpakAs(): void {
+  beginExport('ocpak', true)
+}
+
 function promptWriteback(): Promise<'overwrite' | 'saveAsNew' | 'cancel'> {
   return new Promise((resolve) => {
     writebackResolve = resolve
@@ -324,6 +337,24 @@ async function onWorkspaceImportPack(e: Event) {
   if (!lastMessageIsError.value) {
     packSession.value = 'loaded'
   }
+}
+
+async function onWorkspaceImportCharacterCard(e: Event) {
+  characterCardModeOpen.value = false
+  await onImportCharacterCard(e)
+  if (!lastMessageIsError.value) {
+    packSession.value = 'new'
+    characterCardModeOpen.value = true
+  }
+}
+
+function onCharacterCardModeSelect(mode: 'simple' | 'advanced'): void {
+  characterCardModeOpen.value = false
+  void goEditorView(mode)
+}
+
+function onCharacterCardModeCancel(): void {
+  characterCardModeOpen.value = false
 }
 
 function onCreateNewPack(presetId: NewPackPresetId) {
@@ -379,6 +410,7 @@ function onCreateNewPack(presetId: NewPackPresetId) {
               @run-validate="onHeaderValidate"
               @save-draft="() => onSaveDraft()"
               @export-ocpak="onExportOcpak"
+              @export-ocpak-as="onExportOcpakAs"
               @export-folder="onExportFolder"
             />
             <PackShellMenu
@@ -428,6 +460,7 @@ function onCreateNewPack(presetId: NewPackPresetId) {
         @continue-draft="onContinueDraft"
         @discard-draft="onDiscardDraft"
         @import-pack="onWorkspaceImportPack"
+        @import-character-card="onWorkspaceImportCharacterCard"
         @apply-market-compose="onApplyMarketCompose"
       />
 
@@ -438,6 +471,14 @@ function onCreateNewPack(presetId: NewPackPresetId) {
         @overwrite="closeWriteback('overwrite')"
         @save-as-new="closeWriteback('saveAsNew')"
         @cancel="closeWriteback('cancel')"
+      />
+
+      <CharacterCardModeDialog
+        :open="characterCardModeOpen"
+        :report="characterCardImportReport"
+        @simple="onCharacterCardModeSelect('simple')"
+        @advanced="onCharacterCardModeSelect('advanced')"
+        @cancel="onCharacterCardModeCancel"
       />
 
       <PackExportCreatorMessageDialog
@@ -461,6 +502,7 @@ function onCreateNewPack(presetId: NewPackPresetId) {
           :emotion-summary="emotionImageSummary"
           :portrait-slot-files="portraitSlotFiles"
           :portrait-extra-entries="portraitExtraEntries"
+          :character-card-import-report="characterCardImportReport"
           @portrait-slot-pick="onPortraitSlotPick"
           @portrait-slot-clear="onPortraitSlotClear"
           @portrait-clear-all="clearPortraitSlots"
